@@ -71,13 +71,13 @@ class FarmBIModel:
     def __init__(self, cfg: HardDataConfig):
         self.cfg = cfg
         self.date = pd.Timestamp("2025-01-01")
-        self.ewes = 20
+        self.ewes = cfg.barn_capacity  # Přiřadí se z uživatelského inputu
         self.lambs = 0
         self.cash = cfg.capital
         self.bcs = 3.0 
         
         # NEW: Physical hay stock
-        self.hay_stock = 10.0 # Starting bales
+        self.hay_stock = 25.0 # Starting bales
         
         # LAND SPLIT (Key change)
         self.area_meadow = cfg.land_area * cfg.meadow_share     # Only for hay
@@ -250,7 +250,7 @@ with st.sidebar:
     meadow_pct = st.slider("Share of Meadows for Hay (%)", 0, 100, 20, help="This portion of land is reserved ONLY for hay production. Sheep do not graze here.")
     
     st.subheader("2. Herd and Finance")
-    barn = st.slider("Barn (heads)", 20, 500, 100)
+    barn = st.slider("Barn (heads)", 10, 250, 25)
     cap = st.number_input("Capital (CZK)", value=200000)
     meat_price = st.slider("Meat Price (CZK)", 40.0, 120.0, 75.0)
     use_forecast = st.toggle("Cashflow Planner", value=True)
@@ -327,7 +327,7 @@ with col_land2:
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 final_cash = df["Cash"].iloc[-1]
 kpi1.metric("Liquidity (Cash)", f"{final_cash:,.0f} CZK", delta=f"{final_cash-cap:,.0f}")
-kpi2.metric("Herd Status", int(df["Total Sheep"].iloc[-1]), delta=int(df["Total Sheep"].iloc[-1]-20))
+kpi2.metric("Herd Status", int(df["Total Sheep"].iloc[-1]), delta=int(df["Total Sheep"].iloc[-1]-barn))
 kpi3.metric("Cost of Shocks", f"{df['Exp_Shock'].sum():,.0f} CZK")
 kpi4.metric("Total Subsidies", f"{df['Income_Subsidy'].sum():,.0f} CZK")
 
@@ -498,38 +498,90 @@ st.caption("Green = sustainable pasture feeding | Orange = efficient hay managem
 
 # --- VALIDATION (Benchmark) ---
 st.markdown("---")
-st.subheader("✅ Model Validation (Model vs. FADN data CZ)")
+st.subheader("✅ Komplexní Validace (Model vs. Realita ČR)")
 
-# 1. Benchmark Data (Average CZ - "Hard Data" from ÚZEI/FADN)
-# Simplified data for demonstration (in reality you would take exact numbers from Green Report PDF)
+# 1. Benchmark Data (Rozšířená sada - Zdroje: SCHOK, ÚZEI, FADN)
 benchmark_data = {
-    "Feed Cost (CZK/year/sheep)": 1800,
-    "Meat Sales (CZK/year/sheep)": 2200, # Average (some sold, some not)
-    "Profit w/o Subsidies (CZK/year/sheep)": -500 # Sheep are unprofitable without subsidies
+    "1. Náklady Krmivo (Kč/ks)": 1750,
+    "2. Náklady Veterina/Režie (Kč/ks)": 750,  # 350 vet + 400 ost.
+    "3. Tržby Maso (Kč/ks)": 2900, 
+    "4. Zisk bez dotací (Kč/ks)": -1150,
+    "5. Odchov (ks jehňat/matku)": 1.35,       # Biologická efektivita
+    "6. Závislost na dotacích (%)": 65.0       # Kolik % příjmu tvoří dotace
 }
 
-# 2. Data from your model
-model_feed_cost = df["Exp_Feed"].sum() / (df["Total Sheep"].mean() * cfg.sim_years)
-model_meat_sales = df["Income_Sales"].sum() / (df["Total Sheep"].mean() * cfg.sim_years)
-model_profit_no_sub = (df["Income_Sales"].sum() - df["Exp_Feed"].sum() - df["Exp_Overhead"].sum() - df["Exp_Shock"].sum()) / (df["Total Sheep"].mean() * cfg.sim_years)
+# 2. Výpočet metrik z tvého modelu
+avg_ewes = df["Ewes"].mean()
+if avg_ewes == 0: avg_ewes = 1 # Anti-zero division
 
-# 3. Comparison Table
+# Ekonomika na 1 bahnici
+model_feed = df["Exp_Feed"].sum() / (avg_ewes * cfg.sim_years)
+model_overhead = (df["Exp_Overhead"].sum() + df["Exp_Shock"].sum()) / (avg_ewes * cfg.sim_years)
+model_meat = df["Income_Sales"].sum() / (avg_ewes * cfg.sim_years)
+model_profit_no_sub = model_meat - (model_feed + model_overhead)
+
+# Biologie (Odchov)
+# Počet prodaných jehňat za celou dobu / počet bahnic / roky
+# Pozn: V modelu prodáváme v říjnu. Income_Sales > 0 indikuje prodej.
+# Zjednodušený odhad: počet jehňat v létě (peak) / počet matek
+avg_lamb_peak = df[df.index.month == 6]["Lambs"].mean()
+model_rearing = avg_lamb_peak / avg_ewes if avg_ewes > 0 else 0
+
+# Závislost na dotacích
+total_income = df["Income_Sales"].sum() + df["Income_Subsidy"].sum()
+model_subsidy_dep = (df["Income_Subsidy"].sum() / total_income * 100) if total_income > 0 else 0
+
+# 3. Dataframe pro tabulku
 validation_df = pd.DataFrame({
-    "Metric": list(benchmark_data.keys()),
-    "Average CZ (FADN)": list(benchmark_data.values()),
-    "Your Model": [model_feed_cost, model_meat_sales, model_profit_no_sub]
+    "Metrika": list(benchmark_data.keys()),
+    "Průměr ČR (Realita)": list(benchmark_data.values()),
+    "Tvůj Model": [model_feed, model_overhead, model_meat, model_profit_no_sub, model_rearing, model_subsidy_dep]
 })
-validation_df["Deviation"] = validation_df["Your Model"] - validation_df["Average CZ (FADN)"]
 
-# Rendering
-col_val1, col_val2 = st.columns([1, 2])
+# Výpočet odchylky
+validation_df["Odchylka"] = validation_df["Tvůj Model"] - validation_df["Průměr ČR (Realita)"]
+
+# Formátování a vykreslení
+col_val1, col_val2 = st.columns([4, 3])
 
 with col_val1:
-    st.write("Comparison of annual economics per 1 sheep:")
-    # FIX HERE: Formatting only numeric columns using 'subset'
+    st.markdown("### 📋 Detailní Srovnání")
+    
+    def color_diff(val):
+        """Barví odchylku: Zelená (malá), Červená (velká)"""
+        color = 'green' if abs(val) < 200 else 'red' # Tolerance pro Kč
+        return f'color: {color}'
+
     st.dataframe(
         validation_df.style.format(
-            "{:.0f}", subset=["Average CZ (FADN)", "Your Model", "Deviation"]
-        ), 
-        use_container_width=True
+            "{:,.1f}", subset=["Průměr ČR (Realita)", "Tvůj Model", "Odchylka"]
+        ),
+        use_container_width=True,
+        height=300
     )
+
+with col_val2:
+    st.markdown("### 🎯 Klíčové KPI")
+    
+    # 1. Ziskovost
+    diff_profit = model_profit_no_sub - benchmark_data["4. Zisk bez dotací (Kč/ks)"]
+    if model_profit_no_sub > 0:
+        st.error(f"❌ **PŘÍLIŠ ZISKOVÉ!** Model ukazuje zisk bez dotací {model_profit_no_sub:.0f} Kč. Realita v ČR je ztráta cca -1150 Kč. Zřejmě máš příliš levné krmivo nebo vysokou cenu masa.")
+    elif abs(diff_profit) < 500:
+        st.success("✅ **EKONOMIKA SEDÍ:** Model generuje realistickou ztrátu bez dotací.")
+    else:
+        st.warning("⚠️ **Odchylka v zisku:** Zkontroluj fixní náklady.")
+
+    # 2. Biologie
+    st.write("---")
+    col_bio1, col_bio2 = st.columns(2)
+    col_bio1.metric("Odchov (Model)", f"{model_rearing:.2f}", delta=f"{model_rearing - 1.35:.2f}")
+    col_bio2.metric("Odchov (ČR)", "1.35")
+    
+    if model_rearing > 1.6:
+        st.warning("⚠️ **Super-ovce?** Odchov > 1.6 je v extenzivním chovu velmi vzácný. Sniž plodnost nebo zvyš úmrtnost.")
+    
+    # 3. Dotace
+    st.write("---")
+    st.metric("Závislost na dotacích", f"{model_subsidy_dep:.1f} %", delta=f"{model_subsidy_dep - 65.0:.1f} %")
+    st.caption("Pokud je toto číslo pod 50 %, tvůj model je příliš tržně optimistický.")
