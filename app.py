@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from dataclasses import dataclass
 
-# --- CONFIGURATION AND STYLE ---
-st.set_page_config(page_title="Ovčí farma", layout="wide")
+# --- CONFIGURATION ---
+st.set_page_config(page_title="Sheep Farm 12.0 - Ultimate Reality", layout="wide", page_icon="🚜")
 plt.style.use('dark_background')
 
 # --- HELPER FUNCTIONS ---
@@ -15,519 +15,439 @@ def get_stochastic_value(mean, std, min_val=0.0):
     return max(min_val, val)
 
 @dataclass
-class HardDataConfig:
-    # --- USER INPUTS ---
+class FarmConfig:
+    # 1. SCALE & LAND
     sim_years: int
     land_area: float
-    meadow_share: float        # % of land reserved only for hay production
+    meadow_share: float
     barn_capacity: int
-    barn_area_m2: float        # Storage capacity in m²
+    initial_ewes: int
+    barn_area_m2: float
+    hay_barn_area_m2: float
+    
+    # 2. ECONOMICS
     capital: float
     price_meat_avg: float
-    enable_forecasting: bool
-    safety_margin: float
-    include_labor_cost: bool = False  # Toggle for labor accounting
-
-    # --- BIOLOGY (Hard Data) ---
-    carrying_capacity_mean: float = 7.0
-    carrying_capacity_std: float = 1.0
+    meat_price_std: float = 10.0
+    initial_hay_bales: float = 25.0
+    price_bale_sell_winter: float = 1200.0   # Buy/Sell prices
+    price_bale_sell_summer: float = 600.0   
+    price_ram_purchase: float = 10000.0
+    
+    # 3. STRATEGY (New!)
+    machinery_mode: str = "Services" # "Services" or "Own"
+    climate_profile: str = "Normal"  # "Normal", "Dry", "Mountain"
+    include_labor_cost: bool = False
+    safety_margin: float = 0.2
+    enable_forecasting: bool = True
+    
+    # 4. COSTS (Base rates)
+    cost_feed_own_mean: float = 2.5
+    cost_feed_market_mean: float = 8.0
+    
+    cost_vet_base: float = 350.0
+    cost_shearing: float = 50.0
+    admin_base_cost: float = 5000.0       # Base admin cost per year
+    admin_complexity_factor: float = 1.5  # Exponent (1.0=linear, 1.5=progressive)
+    
+    # Machinery / Services Rates
+    service_mow_ha: float = 3000.0   # Price per ha (service)
+    service_bale_pcs: float = 200.0  # Price per bale (service)
+    
+    own_mow_fuel_ha: float = 400.0   # Fuel only
+    own_bale_material: float = 50.0  # Net wrap
+    own_machine_capex: float = 1600000.0 # Tractor + Equipment cost
+    own_machine_life: float = 10.0   # Years depreciation
+    machinery_repair_mean: float = 25000.0
+    machinery_repair_std: float = 5000.0
+    machinery_failure_prob_daily: float = 0.0001  # Daily breakdown risk
+    
+    # 5. BIOLOGY
     fertility_mean: float = 1.5
     fertility_std: float = 0.2
     mortality_lamb_mean: float = 0.10
-    mortality_lamb_std: float = 0.03
     mortality_ewe_mean: float = 0.04
-    mortality_ewe_std: float = 0.01
-    feed_intake_ewe: float = 2.2      # kg dry matter/day (ewes)
-    feed_intake_lamb: float = 1.2     # kg dry matter/day (lambs)
-    feed_intake_std: float = 0.3
-    hay_yield_ha_mean: float = 12.0   # Bales per hectare (updated)
+    feed_intake_ewe: float = 2.2
+    feed_intake_lamb: float = 1.2
+    hay_yield_ha_mean: float = 12.0
     hay_yield_ha_std: float = 3.0
-    bale_weight_kg: float = 250.0     # Weight of one bale
-    bale_volume_m3: float = 1.4       # Volume for barn storage
+    bale_weight_kg: float = 250.0
+    bale_volume_m3: float = 1.4
     
-    # --- ECONOMICS ---
-    price_meat_std: float = 10.0 
-    price_bale_sell_winter: float = 800.0   # Selling hay in winter
-    price_bale_sell_summer: float = 400.0   # Selling hay surplus in summer
-    price_ram_purchase: float = 10000.0     # Breeding ram cost
-    
-    # Feed costs
-    cost_feed_own_mean: float = 2.5
-    cost_feed_own_std: float = 0.5
-    cost_feed_market_mean: float = 8.0
-    cost_feed_market_std: float = 2.0
-    
-    # Detailed costs
-    cost_vet_per_sheep: float = 350.0       # Medicines, deworming/year
-    cost_shearing: float = 50.0             # Shearing per animal
-    cost_mowing_ha: float = 1500.0          # Mowing + fuel per ha
-    cost_bale_production: float = 200.0     # Baling + netting per bale
-    
-    # Labor
-    wage_hourly: float = 200.0              # Hourly wage
-    labor_hours_per_ewe_year: float = 6.0   # Hours per ewe per year
-    
-    # Subsidies (Updated Czech rates)
+    # 6. SUBSIDIES
     subsidy_ha_mean: float = 8500.0
     subsidy_ha_std: float = 200.0
     subsidy_sheep_mean: float = 603.0
     subsidy_sheep_std: float = 50.0
     
-    # Land tax
+    # 7. FIXED & SHOCKS
     tax_land_ha: float = 500.0
-    
-    # Overheads and Fixed
+    tax_building_m2: float = 15.0
     fixed_cost_ewe_mean: float = 900.0 
-    fixed_cost_ewe_std: float = 100.0
-    overhead_base_year: float = 40000.0 
-    
-    # Shocks (Risks)
-    shock_prob_daily: float = 0.005 # 0.5% chance daily
+    overhead_base_year: float = 40000.0
+    barn_maintenance_m2_year: float = 60.0
+    shock_prob_daily: float = 0.005
     shock_cost_mean: float = 15000.0
     shock_cost_std: float = 5000.0
+    
+    # Labor
+    wage_hourly: float = 200.0
+    labor_hours_per_ewe_year: float = 8.0
+    labor_hours_per_ha_year: float = 10.0
+    labor_hours_fix_year: float = 200.0
+    labor_hours_barn_m2_year: float = 0.5
 
-class FarmBIModel:
-    def __init__(self, cfg: HardDataConfig):
+class FarmModel:
+    def __init__(self, cfg: FarmConfig):
         self.cfg = cfg
         self.date = pd.Timestamp("2025-01-01")
         
-        # --- DETAILED HERD STRUCTURE ---
-        self.ewes = cfg.barn_capacity              # Bahnice (matky)
-        self.ewe_ages = [3.0] * cfg.barn_capacity  # Age of each ewe (years) - NEW
-        self.rams_breeding = max(1, cfg.barn_capacity // 25)  # Breeding rams (1 per 25-30 ewes)
-        self.ram_age = 3.0                         # Age of breeding ram - NEW
-        self.lambs_male = 0                        # Beránci na výkrm
-        self.lambs_female = 0                      # Jehničky na obnovu
-        self.lamb_age = 0.0                        # Age of lambs (years) - NEW
+        # --- HERD ---
+        self.ewes = cfg.initial_ewes
+        self.ewe_ages = [3.0] * cfg.initial_ewes
+        self.rams_breeding = max(1, int(cfg.initial_ewes / 30))
+        self.ram_age = 3.0
+        self.lambs_male = 0
+        self.lambs_female = 0
+        self.lamb_age = 0.0
         
-        # --- STATES ---
+        # --- ASSETS ---
         self.cash = cfg.capital
-        self.hay_stock_bales = 25.0                # Starting hay stock
-        self.bcs = 3.0                             # Body condition score
+        self.hay_stock_bales = cfg.initial_hay_bales
+        self.bcs = 3.0
         
-        # --- LAND SPLIT ---
-        self.area_meadow = cfg.land_area * cfg.meadow_share     # Only for hay
-        self.area_pasture = cfg.land_area * (1 - cfg.meadow_share) # Only for grazing
+        # --- CLIMATE SETUP ---
+        if cfg.climate_profile == "Dry":
+            self.grass_mod = 0.7       # Less grass
+            self.drought_chance = 0.02 # 2% daily chance of total burnout in summer
+            self.winter_len_mod = 0.8  # Shorter winter
+        elif cfg.climate_profile == "Mountain":
+            self.grass_mod = 1.2       # More grass
+            self.drought_chance = 0.001
+            self.winter_len_mod = 1.3  # Longer winter
+        else:
+            self.grass_mod = 1.0
+            self.drought_chance = 0.005
+            self.winter_len_mod = 1.0
+
+        self.is_winter = True
+        self.winter_end_day = int(80 * self.winter_len_mod)
+        self.winter_start_day = int(365 - (60 * self.winter_len_mod))
         
-        # --- SEASONAL LOGIC ---
-        self.is_winter_mode = True                 # Start in winter
-        self.winter_end_day = np.random.randint(70, 90)  # Stochastic spring start (mid-March)
-        self.winter_start_day = 280                # Around early October
+        # --- LAND ---
+        self.area_meadow = cfg.land_area * cfg.meadow_share
+        self.area_pasture = cfg.land_area * (1 - cfg.meadow_share)
         
         self.history = []
-        self.event_log = []  # Event logging
+        self.event_log = []
         self.feed_log = {"Grazing": 0, "Stored": 0, "Market": 0}
-
-        # Grass growth curve by month
-        self.grass_curve = {
-            1:0, 2:0, 3:0.1, 4:0.5, 5:1.2, 6:1.1, 
-            7:0.7, 8:0.5, 9:0.7, 10:0.4, 11:0.1, 12:0
-        }
+        
+        # Grass curve (Month 1-12)
+        self.grass_curve = {1:0, 2:0, 3:0.1, 4:0.5, 5:1.2, 6:1.1, 7:0.8, 8:0.6, 9:0.8, 10:0.4, 11:0.1, 12:0}
 
     def _check_barn_capacity(self):
-        """Check if hay fits in barn. Sell excess."""
-        max_volume = self.cfg.barn_area_m2 * 3.0  # Assume 3m stacking height
+        max_volume = self.cfg.hay_barn_area_m2 * 3.0
         max_bales = int(max_volume / self.cfg.bale_volume_m3)
-        
         if self.hay_stock_bales > max_bales:
             excess = self.hay_stock_bales - max_bales
             income = excess * self.cfg.price_bale_sell_summer
             self.cash += income
             self.hay_stock_bales = max_bales
-            self.event_log.append(f"{self.date.date()}: ⚠️ Stodola plná! Prodáno {int(excess)} balíků za {int(income)} Kč.")
+            self.event_log.append(f"{self.date.date()}: ⚠️ Seník plný! Prodáno {int(excess)} balíků.")
 
     def _get_seasonal_overhead(self, month):
-        base_daily = self.cfg.overhead_base_year / 365
-        if month in [6, 7, 8]: return base_daily * 1.5
-        elif month in [1, 2, 12]: return base_daily * 1.3
-        else: return base_daily * 0.8
+        base = self.cfg.overhead_base_year / 365
+        # Add barn maintenance (spread daily)
+        total_m2 = self.cfg.barn_area_m2 + self.cfg.hay_barn_area_m2
+        barn_maint = (total_m2 * self.cfg.barn_maintenance_m2_year) / 365
+        return (base * (1.5 if month in [6,7,8] else 0.8)) + barn_maint
 
     def _perform_forecast(self):
-        """Estimate winter feeding costs."""
         total_adults = self.ewes + self.rams_breeding
         winter_feed_cost = 180 * self.cfg.feed_intake_ewe * self.cfg.cost_feed_market_mean * total_adults
-        winter_overhead = (self.cfg.overhead_base_year / 2) * 1.2
-        return (winter_feed_cost + winter_overhead) * (1.0 + self.cfg.safety_margin)
+        return (winter_feed_cost + 40000) * (1.0 + self.cfg.safety_margin)
 
     def step(self):
         month = self.date.month
         day = self.date.dayofyear
         
-        # --- 1. MEAT PRICE (With Easter effect) ---
-        base_meat_price = get_stochastic_value(self.cfg.price_meat_avg, self.cfg.price_meat_std)
-        # Easter price premium (March-April, months 3-4)
-        if month in [3, 4]:
-            base_meat_price *= np.random.uniform(1.2, 1.4)  # 20-40% premium
+        # 1. MEAT PRICE
+        base_meat_price = get_stochastic_value(self.cfg.price_meat_avg, self.cfg.meat_price_std)
+        if month in [3, 4]: base_meat_price *= 1.25 # Easter premium
         
-        # --- 2. SEASONAL MODE LOGIC (Stochastic winter/summer transition) ---
-        if self.is_winter_mode and day > self.winter_end_day:
-            if np.random.random() < 0.15:  # 15% chance each day after threshold
-                self.is_winter_mode = False
-                self.event_log.append(f"{self.date.date()}: 🌱 Začalo jaro! Ovce jdou na pastvu.")
+        # 2. SEASON CONTROL
+        if self.is_winter and day > self.winter_end_day:
+            if np.random.random() < 0.1: 
+                self.is_winter = False
+                self.event_log.append(f"{self.date.date()}: 🌱 Jaro ({self.cfg.climate_profile})")
         
-        if not self.is_winter_mode and day > self.winter_start_day:
-            if np.random.random() < 0.15:
-                self.is_winter_mode = True
-                self.winter_end_day = int(get_stochastic_value(80, 10))  # Set next year's spring end
-                self.event_log.append(f"{self.date.date()}: ❄️ Začala zima! Ovce se stahují do ovčína.")
+        if not self.is_winter and day > self.winter_start_day:
+            if np.random.random() < 0.1:
+                self.is_winter = True
+                self.winter_end_day = int(get_stochastic_value(80 * self.winter_len_mod, 10))
+                self.event_log.append(f"{self.date.date()}: ❄️ Zima")
 
-        # --- 3. BIOLOGY & FEEDING ---
+        # 3. FEEDING & BCS
         total_adults = self.ewes + self.rams_breeding
         total_lambs = self.lambs_male + self.lambs_female
-        
-        # Feed demand (kg dry matter)
         demand_kg = (total_adults * self.cfg.feed_intake_ewe) + (total_lambs * self.cfg.feed_intake_lamb)
         
         feed_cost = 0.0
         feed_source = ""
-        # daily trackers for specific expenses (for validation breakdown)
+        
+        # Daily cost trackers
         day_vet = 0.0
         day_mow = 0.0
         day_shearing = 0.0
         day_ram_purchase = 0.0
+        day_machinery = 0.0
+        day_admin = 0.0
         
-        if self.is_winter_mode:
-            # WINTER: Feed only from hay storage
-            # Assume 20% waste (trampling, spillage in feeder)
-            needed_bales = (demand_kg * 1.2) / self.cfg.bale_weight_kg
+        # Drought simulation
+        is_drought = False
+        if not self.is_winter and month in [6,7,8]:
+            if np.random.random() < self.drought_chance:
+                is_drought = True
+                self.event_log.append(f"{self.date.date()}: ☀️ Sucho! Tráva neroste.")
+
+        if self.is_winter or is_drought:
+            # Feeding Hay
+            needed_bales = (demand_kg * 1.2) / self.cfg.bale_weight_kg # 20% waste
+            fed = min(self.hay_stock_bales, needed_bales)
+            self.hay_stock_bales -= fed
             
-            # Take what we have
-            real_fed_bales = min(self.hay_stock_bales, needed_bales)
-            self.hay_stock_bales -= real_fed_bales
+            feed_cost = fed * 50 # Handling
             
-            # Cost of own hay (just labor/handling in winter)
-            feed_cost = real_fed_bales * 50  # 50 CZK per bale for handling
-            
-            # If short on hay, buy from market
-            if real_fed_bales < needed_bales:
-                missing = needed_bales - real_fed_bales
-                cost_buy = missing * get_stochastic_value(self.cfg.price_bale_sell_winter, 100)
-                feed_cost += cost_buy
-                self.bcs = max(2.0, self.bcs - 0.001)  # Stress penalty
+            if fed < needed_bales:
+                buy_bales = needed_bales - fed
+                feed_cost += buy_bales * get_stochastic_value(self.cfg.price_bale_sell_winter, 100)
+                self.bcs = max(1.5, self.bcs - 0.002) # Hunger
                 feed_source = "Market"
             else:
-                self.bcs = max(2.5, self.bcs - 0.0005)  # Maintenance loss
+                self.bcs = max(2.5, self.bcs - 0.001)
                 feed_source = "Stored"
-                
         else:
-            # SUMMER: Grazing on pastures
-            growth_factor = self.grass_curve[month]
-            available_grass = self.area_pasture * 35.0 * growth_factor * np.random.normal(1.0, 0.2)
+            # Grazing
+            growth = self.grass_curve[month] * self.grass_mod
+            avail = self.area_pasture * 35.0 * growth * np.random.normal(1.0, 0.2)
             
-            if available_grass >= demand_kg:
-                # Enough grass
-                self.bcs = min(4.0, self.bcs + 0.003)
-                feed_cost = demand_kg * 0.2  # Minimal cost (minerals, water)
+            if avail >= demand_kg:
+                self.bcs = min(4.0, self.bcs + 0.004)
+                feed_cost = demand_kg * 0.2 # Salt/Water
                 feed_source = "Grazing"
             else:
-                # Drought: supplement with hay
-                missing_kg = demand_kg - available_grass
-                # Summer losses higher than winter (trampling on dry ground): apply 35% waste
-                needed_bales = (missing_kg * 1.35) / self.cfg.bale_weight_kg
+                # Supplement
+                deficit = demand_kg - avail
+                needed_bales = (deficit * 1.4) / self.cfg.bale_weight_kg
+                fed = min(self.hay_stock_bales, needed_bales)
+                self.hay_stock_bales -= fed
                 
-                taken = min(self.hay_stock_bales, needed_bales)
-                self.hay_stock_bales -= taken
+                feed_cost = (avail * 0.2) + (fed * 50)
                 
-                # Cost of hay feeding in summer
-                feed_cost = available_grass * 0.2
-                feed_cost += taken * 50  # Handling cost
-                
-                # If we run out of hay in summer, buy expensive supplement
-                if taken < needed_bales:
-                    missing_bales = needed_bales - taken
-                    feed_cost += missing_bales * self.cfg.price_bale_sell_summer
-                    self.bcs -= 0.005
+                if fed < needed_bales: 
+                    self.bcs -= 0.002
+                    missing = needed_bales - fed
+                    feed_cost += missing * self.cfg.price_bale_sell_summer
                     feed_source = "Market"
                 else:
                     feed_source = "Stored"
-
+        
         self.feed_log[feed_source] += 1
 
-        # --- 4. DAILY MORTALITY (All groups) ---
-        # Ewes: Age-dependent mortality (older ewes die more often)
-        if self.ewes > 0:
-            avg_ewe_age = np.mean(self.ewe_ages)
-            age_factor = 1.0 + (max(0, avg_ewe_age - 4.0) * 0.2)  # Mortality increases after 4 years
-            ewe_mort_prob = (self.cfg.mortality_ewe_mean / 365) * age_factor * (2 if self.bcs < 2.5 else 1)
-            ewe_deaths = np.random.binomial(self.ewes, ewe_mort_prob)
-            
-            if ewe_deaths > 0:
-                # Remove oldest ewes first (realistic)
-                self.ewe_ages = sorted(self.ewe_ages)
-                self.ewe_ages = self.ewe_ages[ewe_deaths:]
-                self.ewes = max(0, self.ewes - ewe_deaths)
+        # 4. HEALTH & COSTS (BCS Impact)
+        vet_multiplier = 1.0
+        if self.bcs < 2.5: vet_multiplier = 2.0 # Nutná léčba
         
-        # Rams: Similar to ewes but slightly higher (more aggressive)
-        if self.rams_breeding > 0:
-            ram_mort_prob = (self.cfg.mortality_ewe_mean / 365) * 1.3 * (2 if self.bcs < 2.5 else 1)  # 30% higher
-            ram_deaths = np.random.binomial(self.rams_breeding, ram_mort_prob)
-            # Remove dead rams
-            self.rams_breeding = max(0, self.rams_breeding - ram_deaths)
-            if ram_deaths > 0:
-                # Record replacement purchase as daily ram purchase (avoid double cash-debit)
-                replace_cost = ram_deaths * self.cfg.price_ram_purchase
-                day_ram_purchase += replace_cost
-                # restore breeding count to keep flock functional
-                self.rams_breeding += ram_deaths
-                # new ram(s) are young
-                self.ram_age = 0.5
-                self.event_log.append(f"{self.date.date()}: 🐑 Beran zemřel (x{ram_deaths}). Koupě náhrad za {int(replace_cost)} Kč.")
-        
-        # Lambs: MUCH higher mortality (10% annual = 0.027% daily)
-        # Newborns are most vulnerable
-        if (self.lambs_male + self.lambs_female) > 0:
-            total_lambs = self.lambs_male + self.lambs_female
-            # Lambs born in March, so in spring they are most vulnerable
-            lamb_vulnerability = 2.5 if month in [3, 4, 5] else 2.0  # Higher mortality in spring
-            lamb_mort_prob = (self.cfg.mortality_lamb_mean / 365) * lamb_vulnerability * (2 if self.bcs < 2.5 else 1)
-            lamb_deaths = np.random.binomial(total_lambs, lamb_mort_prob)
+        # 5. MACHINERY COST (Make or Buy)
+        if self.cfg.machinery_mode == "Own":
+            # Depreciation (Odpisy)
+            daily_depreciation = (self.cfg.own_machine_capex / self.cfg.own_machine_life) / 365
+            day_machinery += daily_depreciation
             
-            if lamb_deaths > 0:
-                # Distribute deaths proportionally to male and female
-                male_share = self.lambs_male / total_lambs if total_lambs > 0 else 0.5
-                male_deaths = int(lamb_deaths * male_share)
-                female_deaths = lamb_deaths - male_deaths
-                
-                self.lambs_male = max(0, self.lambs_male - male_deaths)
-                self.lambs_female = max(0, self.lambs_female - female_deaths)
+            # Breakdown risk (increases with land area used)
+            if np.random.random() < (self.cfg.machinery_failure_prob_daily * self.cfg.land_area):
+                repair = get_stochastic_value(self.cfg.machinery_repair_mean, self.cfg.machinery_repair_std)
+                day_machinery += repair
+                self.event_log.append(f"{self.date.date()}: 🔧 Porucha traktoru! Oprava: {int(repair)} Kč.")
 
-        # --- 5. CASHFLOW PLANNING & CALENDAR EVENTS ---
-        # Crisis planner: estimate winter cost and perform emergency hay sale if enabled
+        # 6. ADMIN PENALTY (Diseconomies of Scale)
+        total_animals = total_adults + total_lambs
+        # Power law: Base * (N/50)^1.5 ... costs grow faster than linearly
+        admin_scale = (max(1, total_animals) / 50.0) ** self.cfg.admin_complexity_factor
+        day_admin = (self.cfg.admin_base_cost * admin_scale) / 365
+
+        # --- EVENTS ---
         income = 0.0
-        variable_costs = 0.0
-
-        if self.cfg.enable_forecasting and month == 10 and self.date.day == 1:
-            forecast_cost = self._perform_forecast()
-            # Estimate October sales from current lambs (males sold, ~20% of females sold)
-            est_sell_females = int(self.lambs_female * 0.2)
-            oct_sales_estimate = (self.lambs_male * 40.0 * base_meat_price) + (est_sell_females * 35.0 * base_meat_price)
-            projected_cash = self.cash + oct_sales_estimate - forecast_cost
-
-            # If projected cash is negative, sell part of hay stocks to stabilise cashflow
-            if projected_cash < 0 and self.hay_stock_bales > 10:
-                # Sell up to 30% of current hay, or enough to cover projected shortfall
-                needed = int(min(self.hay_stock_bales * 0.3, max(0, (abs(projected_cash) // max(1, self.cfg.price_bale_sell_summer)) + 1)))
-                if needed > 0:
-                    emergency_income = needed * self.cfg.price_bale_sell_summer
-                    self.cash += emergency_income
-                    self.hay_stock_bales -= needed
-                    self.event_log.append(f"{self.date.date()}: 🚨 Krizový prodej sena! Prodáno {int(needed)} balíků za {int(emergency_income)} Kč pro cashflow.")
+        var_cost = 0.0
         
-        # A) MARCH 15: LAMBING & SPRING VET (50/50 M/F split)
+        # Lambing
         if month == 3 and self.date.day == 15:
-            # Fertility depends on BCS
-            fert = get_stochastic_value(self.cfg.fertility_mean, self.cfg.fertility_std)
-            if self.bcs < 2.5:
-                fert *= 0.7  # Penalty for poor condition
+            f = get_stochastic_value(self.cfg.fertility_mean, self.cfg.fertility_std)
+            if self.bcs < 2.5: f *= 0.6
+            born = int(self.ewes * f)
+            self.lambs_male += int(born/2)
+            self.lambs_female += (born - int(born/2))
+            self.bcs -= 0.5
             
-            total_born = int(self.ewes * fert)
-            males = int(total_born * 0.5)
-            females = total_born - males
-            
-            self.lambs_male += males
-            self.lambs_female += females
-            self.lamb_age = 0.0  # Newborns
-            self.bcs -= 0.5  # Energy depletion from pregnancy
-            
-            # Spring vet (deworming)
-            total_heads = self.ewes + self.rams_breeding + self.lambs_male + self.lambs_female
-            vet_cost = total_heads * (self.cfg.cost_vet_per_sheep / 2)
-            variable_costs += vet_cost
-            day_vet += vet_cost
-            
-            self.event_log.append(f"{self.date.date()}: 🍼 Narozeno {total_born} jehňat ({males}M / {females}F). Vet: {int(vet_cost)} Kč.")
+            # Spring Vet
+            day_vet += (total_adults + born) * (self.cfg.cost_vet_base * vet_multiplier / 2)
+            self.event_log.append(f"{self.date.date()}: 🍼 Narozeno {born} jehňat.")
 
-        # B) MAY 15: SHEARING ONLY (veterinary removed)
+        # Shearing
         if month == 5 and self.date.day == 15:
-            # Shearing all adults
-            shearing_cost = (self.ewes + self.rams_breeding) * self.cfg.cost_shearing
-            variable_costs += shearing_cost
-            day_shearing += shearing_cost
-            self.event_log.append(f"{self.date.date()}: ✂️ Stříhání. Náklad: {int(shearing_cost)} Kč.")
+            day_shearing += total_adults * self.cfg.cost_shearing
+            self.event_log.append(f"{self.date.date()}: ✂️ Stříhání.")
 
-        # C) JUNE 10 & SEPT 10: MOWING & BALING
-        if (month == 6 and self.date.day == 10) or (month == 9 and self.date.day == 10):
-            is_second_cut = (month == 9)
-            yield_factor = 0.6 if is_second_cut else 1.0  # Second cut is weaker
+        # Mowing (June + Sept)
+        if (month == 6 or month == 9) and self.date.day == 10:
+            yield_h = get_stochastic_value(self.cfg.hay_yield_ha_mean, self.cfg.hay_yield_ha_std) * self.grass_mod * (0.6 if month==9 else 1.0)
+            bales = self.area_meadow * yield_h
+            self.hay_stock_bales += bales
             
-            current_yield = get_stochastic_value(self.cfg.hay_yield_ha_mean, self.cfg.hay_yield_ha_std) * yield_factor
+            # Cost calculation based on Mode
+            if self.cfg.machinery_mode == "Services":
+                cost = (self.area_meadow * self.cfg.service_mow_ha) + (bales * self.cfg.service_bale_pcs)
+            else:
+                cost = (self.area_meadow * self.cfg.own_mow_fuel_ha) + (bales * self.cfg.own_bale_material)
             
-            # Hay made ONLY from meadows
-            new_bales = self.area_meadow * current_yield
-            self.hay_stock_bales += new_bales
-            
-            # Costs: mowing (fuel, machine) + baling (twine, labor)
-            mow_cost = (self.area_meadow * self.cfg.cost_mowing_ha) + (new_bales * self.cfg.cost_bale_production)
-            variable_costs += mow_cost
-            day_mow += mow_cost
-            
-            cut_name = "Otava" if is_second_cut else "Senoseč"
-            self.event_log.append(f"{self.date.date()}: 🚜 {cut_name}. Vyrobeno {int(new_bales)} balíků. Náklad: {int(mow_cost)} Kč.")
-            
-            # Check barn capacity
+            day_mow += cost
             self._check_barn_capacity()
+            self.event_log.append(f"{self.date.date()}: 🚜 Seč ({self.cfg.machinery_mode}). {int(bales)} balíků.")
 
-        # D) OCTOBER 15: BIG MANAGEMENT DAY
+        # Sales (October)
         if month == 10 and self.date.day == 15:
-            # 1) Sell all male lambs
-            if self.lambs_male > 0:
-                meat_income = self.lambs_male * 40.0 * base_meat_price  # 40 kg average
-                income += meat_income
-                sold_males = self.lambs_male
-                self.lambs_male = 0
-            else:
-                sold_males = 0
-                meat_income = 0
+            # Planner logic
+            if self.cfg.enable_forecasting:
+                forecast = self._perform_forecast()
+                projected = self.cash - forecast
+                if projected < 0 and self.hay_stock_bales > 0:
+                    needed = int(abs(projected) / self.cfg.price_bale_sell_summer) + 1
+                    sold_hay = min(self.hay_stock_bales * 0.4, needed)
+                    income += sold_hay * self.cfg.price_bale_sell_summer
+                    self.hay_stock_bales -= sold_hay
             
-            # 2) Sort female lambs (80% keep for breeding, 20% sell)
-            keep_ratio = 0.8
-            keep_females = int(self.lambs_female * keep_ratio)
-            sell_females = self.lambs_female - keep_females
+            # 1. Sell Males
+            income += self.lambs_male * 40 * base_meat_price
+            sold_m = self.lambs_male
+            self.lambs_male = 0
             
-            if sell_females > 0:
-                income += sell_females * 35.0 * base_meat_price  # Lighter than males
+            # 2. Renew Females (S respektem ke kapacitě ovčína)
+            cull_count = int(self.ewes * 0.15)
+            future_ewes = self.ewes - cull_count
             
-            # 3) Cull old ewes (prefer older ones - culling age 5+ years)
-            # Prioritize removing the oldest ewes
-            ewes_to_cull = []
-            if len(self.ewe_ages) > 0:
-                # Sort indices by age (oldest first) and choose culls preferring 5+ year olds
-                sorted_indices = sorted(range(len(self.ewe_ages)), key=lambda i: self.ewe_ages[i], reverse=True)
-                target_cull = int(self.ewes * 0.15)  # 15% annual turnover
-
-                # First pass: select oldest >4y for culling
-                cull_set = set()
-                for idx in sorted_indices:
-                    if len(cull_set) < target_cull and self.ewe_ages[idx] > 4.0:
-                        cull_set.add(idx)
-
-                # If still need to cull, take next-oldest regardless of age
-                i = 0
-                while len(cull_set) < target_cull and i < len(sorted_indices):
-                    idx = sorted_indices[i]
-                    if idx not in cull_set:
-                        cull_set.add(idx)
-                    i += 1
-
-                # Build new ewe ages excluding culled indices
-                new_ewe_ages = [age for i, age in enumerate(self.ewe_ages) if i not in cull_set]
-                cull_ewes = len(cull_set)
-                self.ewe_ages = new_ewe_ages
-                self.ewes = len(self.ewe_ages)
-            else:
-                cull_ewes = 0
+            # Kolik můžeme maximálně doplnit?
+            max_new_capacity = self.cfg.barn_capacity - future_ewes
             
-            if cull_ewes > 0:
-                income += cull_ewes * 60.0 * (base_meat_price * 0.7)  # Cull meat is cheaper
+            # Chceme doplnit max. 80% jehniček, ale ne víc, než se vejde
+            potential_keep = int(self.lambs_female * 0.8)
+            keep = max(0, min(potential_keep, max_new_capacity))
             
-            # Herd renewal - add young ewes from female lambs
-            self.ewes = max(1, self.ewes + keep_females)
-            self.ewe_ages.extend([0.5] * keep_females)  # New ewes are 6 months old
+            # Zbytek prodáme
+            sell_females = self.lambs_female - keep
+            income += sell_females * 35.0 * base_meat_price
+            
+            # 3. Cull Old Ewes
+            self.ewes = max(1, future_ewes + keep)
             self.lambs_female = 0
+            income += cull_count * 60 * base_meat_price * 0.7
             
-            # 4) Ram replacement (every 2 years)
+            # 3b. Check Ram Ratio (Growth support)
+            needed_rams = max(1, int(self.ewes / 30))
+            if self.rams_breeding < needed_rams:
+                buy_rams = needed_rams - self.rams_breeding
+                day_ram_purchase += buy_rams * self.cfg.price_ram_purchase
+                self.rams_breeding += buy_rams
+                self.event_log.append(f"{self.date.date()}: 🐏 Růst stáda -> nákup {buy_rams} beranů.")
+            
+            # 4. Ram Replace (every 2 years)
             if self.date.year % 2 == 0:
-                # Replace a share of rams proportional to flock size (approx. 50% of rams every 2 years)
-                replace_count = max(1, int(round(self.rams_breeding * 0.5)))
-                replace_cost = replace_count * self.cfg.price_ram_purchase
-                # record purchase as daily ram purchase expense (accounting will add it below)
-                day_ram_purchase += replace_cost
-                # Sell old rams for meat
-                income += replace_count * 80.0 * (base_meat_price * 0.6)
-                self.ram_age = 0.5  # New rams are young
-                self.event_log.append(f"{self.date.date()}: 🐏 Výměna plemenných beranů x{replace_count}. Cena: {int(replace_cost)} Kč.")
+                 replace_count = max(1, int(round(self.rams_breeding * 0.5)))
+                 cost = replace_count * self.cfg.price_ram_purchase
+                 day_ram_purchase += cost
+                 self.event_log.append(f"🐏 Výměna beranů.")
+
+            # 5. Fall Vet
+            day_vet += (self.ewes + self.rams_breeding) * (self.cfg.cost_vet_base * vet_multiplier / 2)
             
-            # 5) Fall deworming
-            vet_cost = (self.ewes + self.rams_breeding + self.lambs_male + self.lambs_female) * (self.cfg.cost_vet_per_sheep / 2)
-            variable_costs += vet_cost
-            # Ensure October vet shows up in daily vet expense (Exp_Vet)
-            day_vet += vet_cost
-            self.event_log.append(f"{self.date.date()}: 💰 Říjnový prodej. Tržba: {int(income)} Kč. Vet: {int(vet_cost)} Kč. Prodáno: {sold_males}M, {sell_females}F, {cull_ewes}E (avg age: {np.mean(self.ewe_ages):.1f} let).")
+            self.event_log.append(f"{self.date.date()}: 💰 Prodej. Příjem {int(income)}.")
 
-        # E) NOV 20 & APR 20: SUBSIDIES (stochastic)
+        # Subsidies
         if month == 11 and self.date.day == 20:
-            # 70% advance payment
-            sub_ha = get_stochastic_value(self.cfg.subsidy_ha_mean, self.cfg.subsidy_ha_std)
-            sub_sheep = get_stochastic_value(self.cfg.subsidy_sheep_mean, self.cfg.subsidy_sheep_std)
-            sub = (self.cfg.land_area * sub_ha) + (self.ewes * sub_sheep)
-            income += sub * 0.7
+            income += ((self.cfg.land_area * get_stochastic_value(self.cfg.subsidy_ha_mean, 200)) + (self.ewes * self.cfg.subsidy_sheep_mean)) * 0.7
         if month == 4 and self.date.day == 20:
-            # 30% final payment
-            sub_ha = get_stochastic_value(self.cfg.subsidy_ha_mean, self.cfg.subsidy_ha_std)
-            sub_sheep = get_stochastic_value(self.cfg.subsidy_sheep_mean, self.cfg.subsidy_sheep_std)
-            sub = (self.cfg.land_area * sub_ha) + (self.ewes * sub_sheep)
-            income += sub * 0.3
-
-        # F) DEC 31: LAND TAX
+             income += ((self.cfg.land_area * get_stochastic_value(self.cfg.subsidy_ha_mean, 200)) + (self.ewes * self.cfg.subsidy_sheep_mean)) * 0.3
+        
+        # Land Tax
         if month == 12 and self.date.day == 31:
-            land_tax = self.cfg.land_area * self.cfg.tax_land_ha
-            variable_costs += land_tax
-            self.event_log.append(f"{self.date.date()}: 🏛️ Daň z pozemku: {int(land_tax)} Kč.")
+             var_cost += self.cfg.land_area * self.cfg.tax_land_ha
+             var_cost += (self.cfg.barn_area_m2 + self.cfg.hay_barn_area_m2) * self.cfg.tax_building_m2
 
-        # --- 6. DAILY LABOR COST ---
-        labor_cost = 0.0
+        # Labor
+        labor_animals = total_adults * self.cfg.labor_hours_per_ewe_year
+        labor_land = self.cfg.land_area * self.cfg.labor_hours_per_ha_year
+        labor_barn = (self.cfg.barn_area_m2 + self.cfg.hay_barn_area_m2) * self.cfg.labor_hours_barn_m2_year
+        labor_fix = self.cfg.labor_hours_fix_year
+        
+        daily_hours = (labor_animals + labor_land + labor_fix + labor_barn) / 365
+        labor_val = 0
         if self.cfg.include_labor_cost:
-            # Count labour per adult animals only (ewes + breeding rams).
-            total_adult_heads = self.ewes + self.rams_breeding
-            daily_hours = (total_adult_heads * self.cfg.labor_hours_per_ewe_year) / 365
-            labor_cost = daily_hours * self.cfg.wage_hourly
+            labor_val = daily_hours * self.cfg.wage_hourly
 
-        # --- 7. RANDOM SHOCKS (Illness, accident) ---
-        shock_cost = 0.0
+        # Shocks
+        shock_val = 0.0
         if np.random.random() < self.cfg.shock_prob_daily:
-            shock_cost = get_stochastic_value(self.cfg.shock_cost_mean, self.cfg.shock_cost_std)
-            if shock_cost > 0:
-                self.event_log.append(f"{self.date.date()}: ⚡ Neočekávaná nehoda. Náklad: {int(shock_cost)} Kč.")
+            shock_val = get_stochastic_value(self.cfg.shock_cost_mean, self.cfg.shock_cost_std)
+            self.event_log.append(f"{self.date.date()}: ⚡ Šok!")
 
-        # --- 8. FINALIZE DAY ---
+        # Finalize
+        var_cost += day_vet + day_mow + day_shearing + day_ram_purchase + day_machinery + day_admin
         daily_overhead = self._get_seasonal_overhead(month)
         
-        # --- AGE ALL ANIMALS ---
-        # Every year, increase age by 1
-        if month == 1 and self.date.day == 1:  # January 1st = birthday
-            self.ewe_ages = [age + 1.0 for age in self.ewe_ages]  # Ewes age
-            self.ram_age += 1.0  # Ram ages
-            self.lamb_age += 1.0  # Lambs age (until they become ewes or are sold)
+        total_out = feed_cost + var_cost + daily_overhead + labor_val + shock_val
+        self.cash += income - total_out
         
-        # Add any ram purchases recorded during the day to variable costs
-        variable_costs += day_ram_purchase
+        # Mortality (Simple daily check)
+        mort_prob_ewe = (self.cfg.mortality_ewe_mean / 365)
+        if self.bcs < 2.0: mort_prob_ewe *= 5
+        elif self.bcs < 2.5: mort_prob_ewe *= 2
+        
+        deaths_ewes = np.random.binomial(self.ewes, mort_prob_ewe)
+        self.ewes = max(0, self.ewes - deaths_ewes)
+        
+        if self.lambs_male + self.lambs_female > 0:
+            mort_prob_lamb = (self.cfg.mortality_lamb_mean / 365) * (2 if self.bcs < 2.5 else 1)
+            self.lambs_male = max(0, self.lambs_male - np.random.binomial(self.lambs_male, mort_prob_lamb))
+            self.lambs_female = max(0, self.lambs_female - np.random.binomial(self.lambs_female, mort_prob_lamb))
 
-        total_income = income
-        total_expense = feed_cost + variable_costs + daily_overhead + labor_cost + shock_cost
-        
-        self.cash += total_income - total_expense
-        
-        # --- LOGGING ---
         self.history.append({
             "Date": self.date,
             "Cash": self.cash,
-            "Total Animals": self.ewes + self.rams_breeding + self.lambs_male + self.lambs_female,
             "Ewes": self.ewes,
-            "Rams": self.rams_breeding,
+            "Lambs": self.lambs_male + self.lambs_female,
             "Lambs Male": self.lambs_male,
             "Lambs Female": self.lambs_female,
+            "Total Animals": self.ewes + self.rams_breeding + self.lambs_male + self.lambs_female,
             "Hay Stock": self.hay_stock_bales,
-            "BCS": self.bcs,
-            "Income": total_income,
+            "Income": income,
             "Exp_Feed": feed_cost,
             "Exp_Vet": day_vet,
+            "Exp_Machinery": day_machinery,
             "Exp_Mow": day_mow,
             "Exp_Shearing": day_shearing,
             "Exp_RamPurchase": day_ram_purchase,
-            "Exp_Variable": variable_costs,
+            "Exp_Admin": day_admin,
+            "Exp_Labor": labor_val,
+            "Labor Hours": daily_hours,
             "Exp_Overhead": daily_overhead,
-            "Exp_Labor": labor_cost,
-            "Exp_Shock": shock_cost,
-            "Is_Winter": int(self.is_winter_mode),
+            "Exp_Shock": shock_val,
+            "Exp_Variable": day_vet + day_mow + day_shearing + day_ram_purchase + day_machinery,
+            "BCS": self.bcs,
             "Meat_Price": base_meat_price
         })
-        
         self.date += pd.Timedelta(days=1)
 
     def run(self):
-        days = self.cfg.sim_years * 365
-        for _ in range(days):
-            self.step()
+        for _ in range(self.cfg.sim_years * 365): self.step()
         return pd.DataFrame(self.history).set_index("Date")
 
 # --- SIDEBAR UI ---
@@ -535,77 +455,129 @@ with st.sidebar:
     st.title("Ovčí farma")
     st.markdown("**Proměnné modelu**")
     
-    st.header("1. Půda a budovy")
+    st.header("1. Kapacita a Infrastruktura")
+    target_ewes = st.slider("Cílová kapacita (ovčín)", 10, 500, 60, help="Maximální počet bahnic. Určuje velikost potřebné budovy.")
+    
+    req_m2 = int(target_ewes * 2.5) # 2.5 m2 per ewe
+    barn_m2 = st.number_input("Velikost ovčína (m²)", 50, 2000, req_m2, help=f"Pro zvířata. Doporučeno: {req_m2} m² (2.5 m²/ks vč. jehňat a uliček)")
+    hay_barn_m2 = st.number_input("Velikost seníku (m²)", 50, 2000, 100, help="Pro uskladnění sena. 100 m² pojme cca 200 balíků (při stohování 3m).")
+    
     area = st.number_input("Celková plocha (ha)", 5.0, 100.0, 15.0)
     meadow_pct = st.slider("Podíl luk na seno (%)", 0, 100, 40, help="Část plochy jen na výrobu sena (pastva zakázana)")
-    barn_m2 = st.number_input("Velikost stodoly (m²)", 50, 1000, 150, help="Stacking height: 3m")
     
     st.header("2. Stádo a ekonomika")
-    start_ewes = st.slider("Počet bahnic (start)", 10, 200, 20)
+    start_ewes = st.slider("Počet bahnic (start)", 10, target_ewes, min(20, target_ewes), help="Kolik ovcí nakoupíte do začátku.")
     meat_price = st.slider("Cena masa (Kč/kg)", 60.0, 120.0, 85.0)
+    start_hay = st.number_input("Počáteční zásoba sena (balíky)", 0, 500, 25)
     cap = st.number_input("Počáteční kapitál (CZK)", value=200000)
     
     st.header("3. Pokročilé")
     labor_on = st.checkbox("🕐 Započítat náklady na vlastní práci", False, help="6h/rok na bahnici @ 200 Kč/h")
+    climate = st.selectbox("🌤️ Klimatický profil", ["Normal", "Dry", "Mountain"])
+    machinery = st.radio("🚜 Seč a lisování", ["Services", "Own"], help="Services = pronájem; Own = vlastní stroj")
     use_forecast = st.toggle("Cashflow Planner", value=True)
     
     st.markdown("---")
-    st.header("Parametry modelu")
+    st.header("Detailní nastavení parametrů")
     
-    # Instance for defaults
-    d = HardDataConfig(0,0,0,0,0,0,0,0,0)
-    
-    with st.expander("Biologie", expanded=False):
-        st.code(f"""
-Plodnost:       {d.fertility_mean} ± {d.fertility_std}
-Úhyn jehňat:    {d.mortality_lamb_mean*100:.0f}%
-Úhyn bahnic:    {d.mortality_ewe_mean*100:.0f}%
-Spotřeba (bahnice):  {d.feed_intake_ewe} kg/den
-Spotřeba (jehně):    {d.feed_intake_lamb} kg/den
-Výnos sena:     {d.hay_yield_ha_mean} balíků/ha
-Váha balíku:    {d.bale_weight_kg} kg
-        """)
-    
-    with st.expander("Ceny a dotace", expanded=False):
-        st.code(f"""
-Krmivo (vlastní):    {d.cost_feed_own_mean} Kč/kg
-Krmivo (nákup):      {d.cost_feed_market_mean} Kč/kg
-Seno (zima):         {d.price_bale_sell_winter} Kč/balík
-Seno (léto):         {d.price_bale_sell_summer} Kč/balík
+    with st.expander("🧬 Biologie a Produkce"):
+        p_fertility = st.number_input("Plodnost (ks/bahnici)", 1.0, 3.0, 1.5, 0.1)
+        p_mortality_lamb = st.number_input("Úhyn jehňat (%)", 0.0, 50.0, 10.0, 1.0) / 100.0
+        p_mortality_ewe = st.number_input("Úhyn bahnic (%)", 0.0, 20.0, 4.0, 0.5) / 100.0
+        p_feed_ewe = st.number_input("Spotřeba bahnice (kg sušiny/den)", 1.0, 4.0, 2.2, 0.1)
+        p_hay_yield = st.number_input("Výnos sena (balíků/ha)", 5.0, 30.0, 12.0, 1.0)
+        
+    with st.expander("💰 Provozní Náklady a Ceny"):
+        c_feed_own = st.number_input("Cena vl. krmiva (Kč/kg)", 0.5, 10.0, 2.5, 0.1)
+        c_feed_market = st.number_input("Cena kup. krmiva (Kč/kg)", 2.0, 20.0, 8.0, 0.5)
+        c_vet = st.number_input("Veterina (Kč/ks/rok)", 100.0, 2000.0, 350.0, 50.0)
+        c_shearing = st.number_input("Stříhání (Kč/ks)", 20.0, 200.0, 50.0, 10.0)
+        c_ram = st.number_input("Cena berana (Kč)", 5000.0, 30000.0, 10000.0, 1000.0)
+        c_bale_sell_winter = st.number_input("Cena sena Zima (Kč/balík)", 200.0, 2000.0, 800.0, 50.0)
+        c_bale_sell_summer = st.number_input("Cena sena Léto (Kč/balík)", 100.0, 1000.0, 400.0, 50.0)
+        
+    with st.expander("🚜 Stroje a Služby"):
+        s_mow_ha = st.number_input("Služba: Seč (Kč/ha)", 500.0, 5000.0, 1500.0, 100.0)
+        s_bale = st.number_input("Služba: Lisování (Kč/ks)", 50.0, 500.0, 200.0, 10.0)
+        o_capex = st.number_input("Vlastní: Cena stroje (Kč)", 100000.0, 5000000.0, 600000.0, 50000.0)
+        o_fuel = st.number_input("Vlastní: Nafta seč (Kč/ha)", 100.0, 1000.0, 400.0, 50.0)
+        o_repair = st.number_input("Vlastní: Opravy ročně (Kč)", 0.0, 100000.0, 15000.0, 1000.0)
 
-Veterina/rok:        {d.cost_vet_per_sheep} Kč/ks
-Stříhání:            {d.cost_shearing} Kč/ks
-Seč:                 {d.cost_mowing_ha} Kč/ha
-Lisování:            {d.cost_bale_production} Kč/balík
+    with st.expander("🏛️ Dotace a Daně"):
+        sub_ha = st.number_input("SAPS (Kč/ha)", 0.0, 20000.0, 8500.0, 100.0)
+        sub_sheep = st.number_input("VDJ (Kč/ks)", 0.0, 5000.0, 603.0, 10.0)
+        tax_land = st.number_input("Daň z nemovitosti (Kč/ha)", 0.0, 2000.0, 500.0, 50.0)
+        tax_build = st.number_input("Daň ze staveb (Kč/m²)", 0.0, 100.0, 15.0, 1.0)
 
-SAPS dotace:    {d.subsidy_ha_mean:,.0f} Kč/ha
-VDJ dotace:     {d.subsidy_sheep_mean:,.0f} Kč/ks
-Daň z pozemků:  {d.tax_land_ha} Kč/ha
-        """)
-    
-    with st.expander("Ostatní", expanded=False):
-        st.code(f"""
-Režie/rok:           {d.overhead_base_year:,.0f} Kč
-Práce:               {d.labor_hours_per_ewe_year}h/rok @ {d.wage_hourly} Kč/h
-Beran:               {d.price_ram_purchase:,.0f} Kč (výměna)
-Šok (riskní):        {d.shock_prob_daily*100:.1f}% / den
-        """)
+    with st.expander("🏢 Režie a Škálování"):
+        ov_base = st.number_input("Základní režie (Kč/rok)", 0.0, 200000.0, 40000.0, 1000.0)
+        adm_base = st.number_input("Admin základ (Kč/rok)", 0.0, 50000.0, 5000.0, 500.0)
+        adm_factor = st.number_input("Admin faktor (Diseconomy)", 1.0, 3.0, 1.5, 0.1, help="Exponent růstu administrativy. 1.0 = lineární, 1.5 = progresivní zátěž.")
+        wage = st.number_input("Hodinová mzda (Kč/h)", 100.0, 1000.0, 200.0, 10.0)
+        labor_h = st.number_input("Pracnost (h/ks/rok)", 1.0, 20.0, 6.0, 0.5)
+        labor_ha = st.number_input("Pracnost půda (h/ha/rok)", 0.0, 50.0, 10.0, 1.0, help="Údržba ohradníků, pastvin, sečení nedopasků.")
+        labor_fix = st.number_input("Fixní pracnost (h/rok)", 0.0, 1000.0, 200.0, 50.0, help="Údržba budov, administrativa, cesty.")
+        labor_barn_m2 = st.number_input("Pracnost budovy (h/m²/rok)", 0.0, 10.0, 0.5, 0.1, help="Úklid, údržba, manipulace v ovčíně.")
+        maint_barn_m2 = st.number_input("Údržba budovy (Kč/m²/rok)", 0.0, 1000.0, 60.0, 10.0, help="Opravy střechy, nátěry, dezinfekce.")
+        shock_p = st.number_input("Pravděpodobnost šoku (denní %)", 0.0, 5.0, 0.5, 0.1) / 100.0
 
 # --- RUN SIMULATION ---
-cfg = HardDataConfig(
+cfg = FarmConfig(
     sim_years=5, 
     land_area=area, 
     meadow_share=meadow_pct/100.0, 
-    barn_capacity=start_ewes,
+    barn_capacity=target_ewes,
+    initial_ewes=start_ewes,
     barn_area_m2=barn_m2,
+    hay_barn_area_m2=hay_barn_m2,
     capital=cap,
     price_meat_avg=meat_price, 
+    initial_hay_bales=start_hay,
     enable_forecasting=use_forecast, 
     safety_margin=0.2,
-    include_labor_cost=labor_on
+    include_labor_cost=labor_on,
+    climate_profile=climate,
+    machinery_mode=machinery,
+    
+    # Overrides from advanced settings
+    fertility_mean=p_fertility,
+    mortality_lamb_mean=p_mortality_lamb,
+    mortality_ewe_mean=p_mortality_ewe,
+    feed_intake_ewe=p_feed_ewe,
+    hay_yield_ha_mean=p_hay_yield,
+    
+    cost_feed_own_mean=c_feed_own,
+    cost_feed_market_mean=c_feed_market,
+    cost_vet_base=c_vet,
+    cost_shearing=c_shearing,
+    price_ram_purchase=c_ram,
+    price_bale_sell_winter=c_bale_sell_winter,
+    price_bale_sell_summer=c_bale_sell_summer,
+    
+    service_mow_ha=s_mow_ha,
+    service_bale_pcs=s_bale,
+    own_machine_capex=o_capex,
+    own_mow_fuel_ha=o_fuel,
+    machinery_repair_mean=o_repair,
+    
+    subsidy_ha_mean=sub_ha,
+    subsidy_sheep_mean=sub_sheep,
+    tax_land_ha=tax_land,
+    tax_building_m2=tax_build,
+    
+    overhead_base_year=ov_base,
+    barn_maintenance_m2_year=maint_barn_m2,
+    admin_base_cost=adm_base,
+    admin_complexity_factor=adm_factor,
+    wage_hourly=wage,
+    labor_hours_per_ewe_year=labor_h,
+    labor_hours_per_ha_year=labor_ha,
+    labor_hours_fix_year=labor_fix,
+    labor_hours_barn_m2_year=labor_barn_m2,
+    shock_prob_daily=shock_p
 )
 
-model = FarmBIModel(cfg)
+model = FarmModel(cfg)
 df = model.run()
 
 # --- SIDEBAR EXPORT ---
@@ -623,10 +595,10 @@ with st.sidebar:
         st.dataframe(df.head(50), use_container_width=True)
 
 # --- MAIN DASHBOARD ---
-st.title("Přehled farmy ovčího hospodářství")
+st.title("Přehled farmy ovčího hospodářství") 
 
 # --- 1. KPI ROW ---
-col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+col_kpi1, col_kpi2, col_kpi3, col_kpi4, col_kpi5 = st.columns(5)
 
 final_cash = df["Cash"].iloc[-1]
 final_animals = df["Total Animals"].iloc[-1]
@@ -653,6 +625,13 @@ col_kpi4.metric(
     "ROI", 
     f"{(total_profit/cap*100):.1f}%",
     delta_color="off"
+)
+
+avg_md_year = (df["Labor Hours"].sum() / cfg.sim_years) / 8.0
+col_kpi5.metric(
+    "Pracnost (MD/rok)", 
+    f"{avg_md_year:.1f} MD",
+    help="Průměrný počet Man-Days (8h) ročně nutný k obsluze farmy."
 )
 
 # --- 2. HERD STRUCTURE ---
@@ -703,12 +682,13 @@ with col_chart:
     ax.bar(df_monthly.index, df_monthly["Income"], label="Celkový Příjem", color="#2ecc71", width=20)
     
     # Expenses (Negative)
-    total_exp_monthly = df_monthly["Exp_Feed"] + df_monthly["Exp_Variable"] + df_monthly["Exp_Overhead"] + df_monthly["Exp_Labor"] + df_monthly["Exp_Shock"]
+    total_exp_monthly = df_monthly["Exp_Feed"] + df_monthly["Exp_Variable"] + df_monthly["Exp_Admin"] + df_monthly["Exp_Overhead"] + df_monthly["Exp_Labor"] + df_monthly["Exp_Shock"]
     ax.bar(df_monthly.index, -df_monthly["Exp_Feed"], label="Krmivo", color="#e67e22", width=20)
     ax.bar(df_monthly.index, -df_monthly["Exp_Variable"], bottom=-df_monthly["Exp_Feed"], label="Veterina+Seč", color="#9b59b6", width=20)
-    ax.bar(df_monthly.index, -df_monthly["Exp_Overhead"], bottom=-(df_monthly["Exp_Feed"]+df_monthly["Exp_Variable"]), label="Režie", color="#3498db", width=20)
-    ax.bar(df_monthly.index, -df_monthly["Exp_Labor"], bottom=-(df_monthly["Exp_Feed"]+df_monthly["Exp_Variable"]+df_monthly["Exp_Overhead"]), label="Práce", color="#1abc9c", width=20)
-    ax.bar(df_monthly.index, -df_monthly["Exp_Shock"], bottom=-(df_monthly["Exp_Feed"]+df_monthly["Exp_Variable"]+df_monthly["Exp_Overhead"]+df_monthly["Exp_Labor"]), label="Šoky", color="#e74c3c", width=20)
+    ax.bar(df_monthly.index, -df_monthly["Exp_Admin"], bottom=-(df_monthly["Exp_Feed"]+df_monthly["Exp_Variable"]), label="Administrativa", color="#7f8c8d", width=20)
+    ax.bar(df_monthly.index, -df_monthly["Exp_Overhead"], bottom=-(df_monthly["Exp_Feed"]+df_monthly["Exp_Variable"]+df_monthly["Exp_Admin"]), label="Režie", color="#3498db", width=20)
+    ax.bar(df_monthly.index, -df_monthly["Exp_Labor"], bottom=-(df_monthly["Exp_Feed"]+df_monthly["Exp_Variable"]+df_monthly["Exp_Admin"]+df_monthly["Exp_Overhead"]), label="Práce", color="#1abc9c", width=20)
+    ax.bar(df_monthly.index, -df_monthly["Exp_Shock"], bottom=-(df_monthly["Exp_Feed"]+df_monthly["Exp_Variable"]+df_monthly["Exp_Admin"]+df_monthly["Exp_Overhead"]+df_monthly["Exp_Labor"]), label="Šoky", color="#e74c3c", width=20)
     
     ax.axhline(0, color="white", linewidth=1)
     ax.set_ylabel("CZK")
@@ -722,13 +702,14 @@ with col_pie:
     total_exp = {
         "Krmivo": df["Exp_Feed"].sum(),
         "Veterina+Seč": df["Exp_Variable"].sum(),
+        "Administrativa": df["Exp_Admin"].sum(),
         "Režie": df["Exp_Overhead"].sum(),
         "Práce": df["Exp_Labor"].sum(),
         "Šoky": df["Exp_Shock"].sum()
     }
     fig_pie, ax_pie = plt.subplots(figsize=(6, 5))
     colors_pie = ["#e67e22", "#9b59b6", "#3498db", "#1abc9c", "#e74c3c"]
-    ax_pie.pie(total_exp.values(), labels=total_exp.keys(), autopct='%1.1f%%', colors=colors_pie, startangle=90)
+    ax_pie.pie(list(total_exp.values()), labels=list(total_exp.keys()), autopct='%1.1f%%', colors=colors_pie, startangle=90)
     st.pyplot(fig_pie)
 
 # --- 5. SEASONAL ANALYSIS ---
@@ -741,7 +722,7 @@ with col_season:
     
     df_month = df.copy()
     df_month["Month"] = df_month.index.month
-    df_month["Daily_Flow"] = df_month["Income"] - (df_month["Exp_Feed"] + df_month["Exp_Variable"] + df_month["Exp_Overhead"] + df_month["Exp_Labor"] + df_month["Exp_Shock"])
+    df_month["Daily_Flow"] = df_month["Income"] - (df_month["Exp_Feed"] + df_month["Exp_Variable"] + df_month["Exp_Admin"] + df_month["Exp_Overhead"] + df_month["Exp_Labor"] + df_month["Exp_Shock"])
     
     seasonal = df_month.groupby("Month")["Daily_Flow"].mean()
     
@@ -859,8 +840,8 @@ st.subheader("✅ Komplexní Validace (Model vs. Realita ČR)")
 # 1. Benchmark Data (Zdroje: SCHOK, ÚZEI, FADN)
 benchmark_data = {
     "1. Krmivo (Kč/ks)": 1750,
-    "2. Veterina a Služby (Kč/ks)": 500,       # Léky + Stříhání
-    "3. Režie a Opravy (Kč/ks)": 1500,        # Nafta (seč), Energie, Pojištění
+    "2. Veterina a Služby (Kč/ks)": 500,
+    "3. Režie a Opravy (Kč/ks)": 1500,
     "4. Tržby Maso (Kč/ks)": 2900,
     "5. Zisk bez dotací (Kč/ks)": -1150,
     "6. Odchov (ks jehňat/matku)": 1.35,
@@ -872,25 +853,23 @@ avg_ewes = df["Ewes"].mean()
 if avg_ewes == 0: avg_ewes = 1
 years = cfg.sim_years
 
-# Economics per ewe (Annualized)
+# Economics per ewe
+# OPRAVA 1: Použití df.index.month místo get_level_values
+oct_income = df[df.index.month == 10]["Income"].sum()
+
 model_feed = df["Exp_Feed"].sum() / (avg_ewes * years)
 
-# Rozdělení "Overhead" na Veterinu/Služby a Skutečnou Režii
-# Veterina a Služby = Vet + Shearing + Ram Purchase
+# Rozdělení nákladů
 model_vet_services = (df["Exp_Vet"].sum() + df["Exp_Shearing"].sum() + df["Exp_RamPurchase"].sum()) / (avg_ewes * years)
-
-# Režie a Opravy = Mow (nafta) + Overhead (fixní) + Shock + Labor
 model_overhead_real = (df["Exp_Mow"].sum() + df["Exp_Overhead"].sum() + df["Exp_Shock"].sum() + df["Exp_Labor"].sum()) / (avg_ewes * years)
 
 # Meat Income
-oct_income = df[df.index.month == 10]["Income"].sum()
 model_meat = (oct_income / (avg_ewes * years)) if oct_income > 0 else (df["Income"].sum() / (avg_ewes * years))
-
-# Profit
 model_profit_no_sub = model_meat - (model_feed + model_vet_services + model_overhead_real)
 
-# Biology (Reproduction)
-avg_lamb_peak = df[df.index.month == 6]["Lambs Male"].mean() + df[df.index.month == 6]["Lambs Female"].mean()
+# OPRAVA 2: Sečtení jehňat pro validaci (sloupec "Lambs" neexistuje)
+lambs_total_series = df["Lambs Male"] + df["Lambs Female"]
+avg_lamb_peak = lambs_total_series[df.index.month == 6].mean()
 model_rearing = avg_lamb_peak / avg_ewes if avg_ewes > 0 else 0
 
 # Subsidy dependence
@@ -908,27 +887,6 @@ validation_df = pd.DataFrame({
 # Calculate difference
 validation_df["Odchylka"] = validation_df["Tvůj Model"] - validation_df["Průměr ČR (Realita)"]
 
-# Display table and KPI checks
-col_val1, col_val2 = st.columns([4, 3])
-
-with col_val1:
-    st.markdown("###  Detailní Srovnání")
-    st.dataframe(validation_df.style.format("{:,.0f}", subset=["Průměr ČR (Realita)", "Tvůj Model", "Odchylka"]), use_container_width=True, height=300)
-
-with col_val2:
-    st.markdown("###  Interpretace")
-    
-    # Check overheads
-    if model_overhead_real > 2000:
-        st.warning(f" **Vysoká Režie ({model_overhead_real:.0f} Kč/ks)**. Důvodem je pravděpodobně započítaná cena práce nebo malý počet ovcí (fixní náklady se málo rozpočítají).")
-    
-    # Profitability check
-    diff_profit = model_profit_no_sub - benchmark_data["5. Zisk bez dotací (Kč/ks)"]
-    if model_profit_no_sub > 0:
-        st.error(f" **PŘÍLIŠ ZISKOVÉ!** Zisk {model_profit_no_sub:.0f} Kč. V ČR je to nereálné bez dotací.")
-    elif abs(diff_profit) < 500:
-        st.success(" **EKONOMIKA SEDÍ:** Ztráta odpovídá realitě.")
-    
-    # Subsidy check
-    st.metric("Závislost na dotacích", f"{model_subsidy_dep:.1f} %")
-
+# Display table
+st.markdown("###  Detailní Srovnání")
+st.dataframe(validation_df.style.format("{:,.0f}", subset=["Průměr ČR (Realita)", "Tvůj Model", "Odchylka"]), use_container_width=True, height=300)
