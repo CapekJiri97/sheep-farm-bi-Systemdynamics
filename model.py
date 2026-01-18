@@ -166,7 +166,7 @@ class FarmModel:
         self.area_pasture = cfg.land_area * (1 - cfg.meadow_share)
         
         self.event_log = []
-        self.feed_log = {"Grazing": 0, "Stored": 0, "Market": 0}
+        self.feed_log = {"Pastva": 0, "Seno": 0, "Nákup": 0}
         
         # OPTIMALIZACE: Před-alokace historie (místo appendování dictů)
         self.total_steps = self.cfg.sim_years * 365
@@ -326,10 +326,10 @@ class FarmModel:
                 # DOŠLO KRMIVO A NOVÉ JEŠTĚ NEDORAZILO (Materiálové zpoždění)
                 # Ovce hladoví výrazněji
                 self.bcs = max(1.5, self.bcs - 0.005) # Hunger penalty
-                feed_source = "Starvation (Wait for Delivery)"
+                feed_source = "Hladovění (Čekání)"
             else:
                 self.bcs = max(2.5, self.bcs - 0.001) # Maintenance
-                feed_source = "Stored"
+                feed_source = "Seno"
         else:
             # Grazing
             growth = self.grass_curve[month] * self.grass_mod
@@ -372,7 +372,7 @@ class FarmModel:
             if eff_avail >= demand_kg:
                 self.bcs = min(4.0, self.bcs + 0.004)
                 feed_cost = demand_kg * 0.2 # Salt/Water
-                feed_source = "Grazing"
+                feed_source = "Pastva"
             elif wants_to_supplement or force_hay:
                 # Supplement (Pokud farmář vidí potřebu NEBO je pastvina zavřená)
                 deficit = demand_kg - eff_avail
@@ -385,14 +385,14 @@ class FarmModel:
                 if fed < needed_bales: 
                     # Došlo i seno na přikrmení
                     self.bcs -= 0.003
-                    feed_source = "Grazing+Starvation" if not force_hay else "Starvation (No Hay)"
+                    feed_source = "Pastva + Hlad" if not force_hay else "Hladovění (Bez sena)"
                 else:
-                    feed_source = "Grazing+Stored" if not force_hay else "Stored (Pasture Rest)"
+                    feed_source = "Pastva + Seno" if not force_hay else "Seno (Ochrana)"
             else:
                 # Farmář si myslí, že jsou OK, tak nepřikrmuje, i když je málo trávy
                 # "Necháme je vyžrat nedopasky"
                 self.bcs -= 0.002 # Skutečná kondice klesá
-                feed_source = "Grazing (No Supplement)"
+                feed_source = "Pastva (Bez příkrmu)"
         
         self.feed_log[feed_source] = self.feed_log.get(feed_source, 0) + 1
 
@@ -743,7 +743,7 @@ BASE_SCENARIO = {
 
 SCENARIOS = {
     # 1. REFERENČNÍ SCÉNÁŘ
-    "1. Rodinný Ideál (Baseline)": {
+    "1. Rodinný Ideál (Základ)": {
         **BASE_SCENARIO,
         "land_area": 40.0, 
         "initial_ewes": 200, 
@@ -759,7 +759,7 @@ SCENARIOS = {
     },
 
     # 2. SCÉNÁŘ MALÉ ŠKÁLY
-    "2. Hobby Zahrada (Small Scale)": {
+    "2. Hobby Zahrada (Malá škála)": {
         **BASE_SCENARIO,
         "land_area": 5.0, 
         "initial_ewes": 25, 
@@ -775,7 +775,7 @@ SCENARIOS = {
     },
 
     # 3. SCÉNÁŘ DISECONOMIES OF SCALE
-    "3. Agro Moloch (Diseconomy)": {
+    "3. Agro Moloch (Neefektivita)": {
         **BASE_SCENARIO,
         "land_area": 300.0, 
         "initial_ewes": 1500, 
@@ -794,7 +794,7 @@ SCENARIOS = {
     },
 
     # 4. SCÉNÁŘ ENVIRONMENTÁLNÍHO STRESU
-    "4. Klimatická Krize (Stress Test)": {
+    "4. Klimatická Krize (Zátěžový test)": {
         **BASE_SCENARIO,
         "land_area": 50.0, 
         "initial_ewes": 200, 
@@ -810,7 +810,7 @@ SCENARIOS = {
     },
 
     # 5. SCÉNÁŘ RIZIKA A STRATEGIE
-    "5. Vrakoviště (High Risk)": {
+    "5. Vrakoviště (Vysoké riziko)": {
         **BASE_SCENARIO,
         "land_area": 60.0, 
         "initial_ewes": 300, 

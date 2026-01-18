@@ -7,7 +7,7 @@ import time
 from model import FarmConfig, FarmModel, SCENARIOS, BASE_SCENARIO
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Sheep Farm - System Dynamics", layout="wide", page_icon="🚜")
+st.set_page_config(page_title="Ovčí farma - Systémová dynamika", layout="wide", page_icon="🚜")
 
 # --- SESSION STATE INIT ---
 if 'custom_scenarios' not in st.session_state:
@@ -18,14 +18,14 @@ with st.sidebar:
     st.title("Ovčí farma")
     
     st.markdown("### Režim aplikace")
-    mode_switch = st.radio("Režim aplikace", ["Jednotlivá simulace", "Monte Carlo Lab"], horizontal=True, help="Přepne na hromadné testování scénářů.", label_visibility="collapsed")
+    mode_switch = st.radio("Režim aplikace", ["Jednotlivá simulace", "Monte Carlo Laboratoř"], horizontal=True, help="Přepne na hromadné testování scénářů.", label_visibility="collapsed")
     st.markdown("---")
     
     # Placeholder for Save Scenario UI (to be rendered after inputs are defined)
     save_sc_container = st.container()
     
     # --- TABS FOR BETTER UI ORGANIZATION ---
-    tab_main, tab_strat, tab_details = st.tabs(["Zaklad", "Strategie", "Detaily"])
+    tab_main, tab_strat, tab_details = st.tabs(["Základ", "Strategie", "Detaily"])
     
     with tab_main:
         st.header("1. Kapacita a Infrastruktura")
@@ -40,29 +40,35 @@ with st.sidebar:
         
         st.header("2. Stádo a ekonomika")
         start_ewes = st.slider("Počet bahnic (start)", 1, target_ewes, min(20, target_ewes), help="Kolik ovcí nakoupíte do začátku.")
-        meat_price = st.slider("Maloobchodní cena (Retail) Kč/kg", 60.0, 150.0, 85.0, help="Cena pro lokální prodej (ze dvora).")
+        meat_price = st.slider("Maloobchodní cena (Ze dvora) Kč/kg", 60.0, 150.0, 85.0, help="Cena pro lokální prodej (ze dvora).")
         start_hay = st.number_input("Počáteční zásoba sena (balíky)", 0, 500, 25)
-        cap = st.number_input("Počáteční kapitál (CZK)", value=200000)
-        labor_on = st.checkbox("Zapocitat mzdy", True, help="6h/rok na bahnici @ 200 Kč/h")
+        cap = st.number_input("Počáteční kapitál (Kč)", value=200000)
+        labor_on = st.checkbox("Započítat náklady na práci", True, help="Mzdy za odpracované hodiny (cca 6h/rok na bahnici).")
 
     with tab_strat:
         st.header("3. Pokročilé")
-        climate = st.selectbox("Klimaticky profil", ["Normal", "Dry", "Mountain"])
-        machinery = st.radio("Sec a lisovani", ["Services", "Own"], help="Services = pronájem; Own = vlastní stroj")
-        use_forecast = st.toggle("Cashflow Planner", value=True)
+        climate_map = {"Normální": "Normal", "Suchý": "Dry", "Horský": "Mountain"}
+        climate_label = st.selectbox("Klimatický profil", list(climate_map.keys()))
+        climate = climate_map[climate_label]
         
-        with st.expander("Ovladani Pocasi (Scenare)"):
-            rain_mod = st.slider("Intenzita srážek/růstu (%)", 50, 150, 100, help="100% = normál dle profilu. Ovlivňuje rychlost růstu trávy.") / 100.0
+        machinery_map = {"Služby": "Services", "Vlastní": "Own"}
+        machinery_label = st.radio("Sklizeň sena (Seč a lisování)", list(machinery_map.keys()), help="Služby = pronájem; Vlastní = vlastní stroj")
+        machinery = machinery_map[machinery_label]
+        
+        use_forecast = st.toggle("Plánovač Cashflow", value=True)
+        
+        with st.expander("Nastavení Počasí (Scénáře)"):
+            rain_mod = st.slider("Intenzita srážek (Růst trávy %)", 50, 150, 100, help="100% = normál dle profilu. Ovlivňuje rychlost růstu trávy.") / 100.0
             drought_add = st.slider("Riziko sucha (+%)", 0.0, 10.0, 0.0, 0.1, help="Zvyšuje pravděpodobnost sucha v létě.") / 100.0
             winter_mod = st.slider("Délka zimy (%)", 50, 150, 100, help="Prodlouží/zkrátí zimní období.") / 100.0
         
-        with st.expander("Trzni Strategie (Velkoobchod)"):
-            m_quota = st.number_input("Kapacita lokálního trhu (ks/rok)", 0, 500, 40, help="Kolik zvířat prodáte sousedům za plnou cenu.")
-            m_wholesale = st.number_input("Velkoobchodní cena (Kč/kg)", 30.0, 80.0, 55.0, help="Cena pro výkup (jatka), když zahltíte lokální trh.")
+        with st.expander("Tržní Strategie (Velkoobchod)"):
+            m_quota = st.number_input("Limit prodeje ze dvora (ks/rok)", 0, 500, 40, help="Kolik zvířat prodáte sousedům za plnou cenu.")
+            m_wholesale = st.number_input("Výkupní cena (Nadprodukce) Kč/kg", 30.0, 80.0, 55.0, help="Cena pro výkup (jatka), když zahltíte lokální trh.")
 
-        with st.expander("Systemova Dynamika (Zpozdeni)"):
-            delay_bcs = st.slider("Zpoždění vnímání kondice (dny)", 1, 30, 10, help="Jak dlouho trvá, než si všimnete, že ovce hubnou.")
-            delay_mat = st.slider("Zpoždění dodávky krmiva (dny)", 0, 14, 3, help="Za jak dlouho přijede kamion s krmivem po objednání.")
+        with st.expander("Systémová Dynamika (Zpoždění)"):
+            delay_bcs = st.slider("Informační zpoždění (Vnímání kondice)", 1, 30, 10, help="Jak dlouho trvá, než si všimnete, že ovce hubnou.")
+            delay_mat = st.slider("Materiálové zpoždění (Dodávka krmiva)", 0, 14, 3, help="Za jak dlouho přijede kamion s krmivem po objednání.")
 
     with tab_details:
         st.header("Detailní nastavení parametrů")
@@ -74,7 +80,7 @@ with st.sidebar:
             p_feed_ewe = st.number_input("Spotřeba bahnice (kg sušiny/den)", 1.0, 4.0, 2.2, 0.1)
             p_hay_yield = st.number_input("Výnos sena (balíků/ha)", 5.0, 30.0, 12.0, 1.0)
             
-        with st.expander("Provozni Naklady a Ceny"):
+        with st.expander("Provozní Náklady a Ceny"):
             c_feed_own = st.number_input("Cena vl. krmiva (Kč/kg)", 0.5, 10.0, 2.5, 0.1)
             c_feed_market = st.number_input("Cena kup. krmiva (Kč/kg)", 2.0, 20.0, 8.0, 0.5)
             c_vet = st.number_input("Veterina (Kč/ks/rok)", 100.0, 2000.0, 350.0, 50.0)
@@ -83,25 +89,25 @@ with st.sidebar:
             c_bale_sell_winter = st.number_input("Cena sena Zima (Kč/balík)", 200.0, 2000.0, 800.0, 50.0)
             c_bale_sell_summer = st.number_input("Cena sena Léto (Kč/balík)", 100.0, 1000.0, 400.0, 50.0)
             
-        with st.expander("Stroje a Sluzby"):
+        with st.expander("Stroje a Služby"):
             s_mow_ha = st.number_input("Služba: Seč (Kč/ha)", 500.0, 5000.0, 1500.0, 100.0)
             s_bale = st.number_input("Služba: Lisování (Kč/ks)", 50.0, 500.0, 200.0, 10.0)
             o_capex = st.number_input("Vlastní: Cena stroje (Kč)", 100000.0, 5000000.0, 600000.0, 50000.0)
             o_fuel = st.number_input("Vlastní: Nafta seč (Kč/ha)", 100.0, 1000.0, 400.0, 50.0)
             o_repair = st.number_input("Vlastní: Opravy ročně (Kč)", 0.0, 100000.0, 15000.0, 1000.0)
 
-        with st.expander("Dotace a Dane"):
+        with st.expander("Dotace a Daně"):
             sub_ha = st.number_input("SAPS (Kč/ha)", 0.0, 20000.0, 8500.0, 100.0)
             sub_sheep = st.number_input("VDJ (Kč/ks)", 0.0, 5000.0, 603.0, 10.0)
             tax_land = st.number_input("Daň z nemovitosti (Kč/ha)", 0.0, 2000.0, 500.0, 50.0)
             tax_build = st.number_input("Daň ze staveb (Kč/m²)", 0.0, 100.0, 15.0, 1.0)
 
-        with st.expander("Rezie a Skalovani"):
+        with st.expander("Režie a Škálování"):
             ov_base = st.number_input("Základní režie (Kč/rok)", 0.0, 200000.0, 40000.0, 1000.0)
             adm_base = st.number_input("Admin základ (Kč/rok)", 0.0, 50000.0, 5000.0, 500.0)
             adm_factor = st.number_input("Admin faktor (Diseconomy)", 1.0, 3.5, 2.0, 0.1, help="Exponent růstu administrativy. 1.0 = lineární, 1.5 = progresivní zátěž.")
             wage = st.number_input("Hodinová mzda (Kč/h)", 100.0, 1000.0, 200.0, 10.0)
-            labor_h = st.number_input("Pracnost (h/ks/rok)", 1.0, 20.0, 6.0, 0.5)
+            labor_h = st.number_input("Pracnost zvířata (h/ks/rok)", 1.0, 20.0, 6.0, 0.5)
             labor_ha = st.number_input("Pracnost půda (h/ha/rok)", 0.0, 50.0, 10.0, 1.0, help="Údržba ohradníků, pastvin, sečení nedopasků.")
             labor_fix = st.number_input("Fixní pracnost (h/rok)", 0.0, 1000.0, 200.0, 50.0, help="Údržba budov, administrativa, cesty.")
             labor_barn_m2 = st.number_input("Pracnost budovy (h/m²/rok)", 0.0, 10.0, 0.5, 0.1, help="Úklid, údržba, manipulace v ovčíně.")
@@ -110,8 +116,8 @@ with st.sidebar:
 
     # --- SAVE SCENARIO UI ---
     with save_sc_container:
-        with st.expander("Ulozit aktualni nastaveni (pro Monte Carlo)"):
-            st.info("Tento scénář bude uložen pod kategorii **C (Custom)**.")
+        with st.expander("Uložit aktuální nastavení (pro Monte Carlo)"):
+            st.info("Tento scénář bude uložen pod kategorii **C (Vlastní)**.")
             new_sc_name = st.text_input("Název scénáře", placeholder="Např. Můj optimalizovaný chov")
             if st.button("Uložit scénář"):
                 if new_sc_name:
@@ -147,7 +153,7 @@ with st.sidebar:
     with st.expander("Seed (Opakovatelnost)", expanded=False):
         sim_seed = st.number_input("Seed simulace", value=1337420, min_value=0, max_value=9999999999, help="Fixní seed zajistí, že náhoda (počasí, ceny) bude stejná pro porovnání scénářů.")
 
-if mode_switch == "Monte Carlo Lab":
+if mode_switch == "Monte Carlo Laboratoř":
     st.title("Monte Carlo Laboratoř")
     st.markdown("Simulace tisíců běhů pro ověření robustnosti scénářů.")
     
@@ -155,7 +161,7 @@ if mode_switch == "Monte Carlo Lab":
     n_runs = mc_cols[0].number_input("Počet běhů na scénář", 10, 2000, 50, help="Pro rychlý test dej 50. Pro finální data 1000.")
     
     with mc_cols[0]:
-        sensitivity_on = st.checkbox("Citlivostni analyza", help="Náhodně mění vybrané parametry v každém běhu.")
+        sensitivity_on = st.checkbox("Citlivostní analýza", help="Náhodně mění vybrané parametry v každém běhu.")
         sens_map = {
             "Cena Masa": "price_meat_avg",
             "Cena Nafty": "own_mow_fuel_ha",
@@ -339,11 +345,11 @@ if mode_switch == "Monte Carlo Lab":
         df_quarterly = st.session_state['mc_results']['quarterly']
         
         # 1. SCENARIO DEFINITIONS TABLE
-        st.subheader("Definice Scenaru")
+        st.subheader("Definice Scénářů")
         st.dataframe(pd.DataFrame(active_scenarios_pool).T)
 
         # 2. TIME SLICER & BOXPLOTS
-        st.subheader("Porovnani v case (Slicer)")
+        st.subheader("Porovnání v čase (Slicer)")
         
         # Get unique quarters sorted
         available_quarters = sorted(df_quarterly["Kvartál"].unique())
@@ -361,7 +367,7 @@ if mode_switch == "Monte Carlo Lab":
         st.altair_chart(chart_profit, use_container_width=True)
         
         # 2b. EFFICIENCY CHART
-        st.subheader("Pracovni Efektivita (Zisk na hodinu)")
+        st.subheader("Pracovní Efektivita (Zisk na hodinu)")
         chart_eff = alt.Chart(df_summary).mark_boxplot().encode(
             x=alt.X("Scénář:N", title=None),
             y=alt.Y("Efektivita (Kč/h):Q", title="Zisk na hodinu práce (Kč/h)"),
@@ -392,11 +398,11 @@ if mode_switch == "Monte Carlo Lab":
         st.caption("Osa X: Průměrný Zisk. Osa Y: Riziko bankrotu. Barva: Zdraví zvířat (Červená = Hlad). Velikost bubliny: Počet ovcí.")
         
         # 3b. TIME SERIES EVOLUTION
-        st.subheader("Vyvoj v case")
+        st.subheader("Vývoj v čase")
         
-        ts_view_mode = st.radio("Rezim zobrazeni", ["Vsechny behy (Detail)", "Pasmo spolehlivosti (Agregace)"], horizontal=True)
+        ts_view_mode = st.radio("Režim zobrazení", ["Všechny běhy (Detail)", "Pásmo spolehlivosti (Agregace)"], horizontal=True)
         
-        if ts_view_mode == "Vsechny behy (Detail)":
+        if ts_view_mode == "Všechny běhy (Detail)":
             # Calculate opacity based on number of runs to avoid overplotting
             opacity_val = max(0.05, min(0.8, 20.0 / n_runs))
             selection = alt.selection_point(fields=['Scénář'], bind='legend')
@@ -463,7 +469,7 @@ if mode_switch == "Monte Carlo Lab":
         
         # 4. SENSITIVITY ANALYSIS (Scatter)
         if sensitivity_on and sens_selection:
-            st.subheader("Citlivostni Analyza (Korelace)")
+            st.subheader("Citlivostní Analýza (Korelace)")
             
             # Create dynamic columns based on selection
             cols = st.columns(min(len(sens_selection), 3))
@@ -479,19 +485,19 @@ if mode_switch == "Monte Carlo Lab":
                     st.altair_chart(chart_sens, use_container_width=True)
         
         # 4. DATA TABLES
-        st.subheader("Souhrnne Vysledky (Prumery)")
+        st.subheader("Souhrnné Výsledky (Průměry)")
         st.dataframe(risk_agg.style.format({
             "Riziko_Bankrotu": "{:.1%}", 
             "Průměr_Zisk": "{:,.0f}", 
             "Průměr_Min_BCS": "{:.2f}"
         }), use_container_width=True)
         
-        with st.expander("Surova Data (Kvartalni export)"):
+        with st.expander("Surová Data (Kvartální export)"):
             st.markdown("Data obsahují záznam pro každý Seed a každý Kvartál.")
             st.dataframe(df_quarterly)
             st.download_button("Stáhnout CSV (Quarterly)", df_quarterly.to_csv(index=False).encode('utf-8'), "monte_carlo_quarterly.csv")
             
-        with st.expander("Surova Data (Souhrn behu)"):
+        with st.expander("Surová Data (Souhrn běhu)"):
             st.markdown("Data obsahují jeden řádek pro každý Seed (finální výsledky).")
             st.dataframe(df_summary)
             st.download_button("Stáhnout CSV (Summary)", df_summary.to_csv(index=False).encode('utf-8'), "monte_carlo_summary.csv")
@@ -791,10 +797,10 @@ col_feed_chart, col_feed_info = st.columns([2, 1])
 
 with col_feed_chart:
     # Agregace klíčů pro zjednodušení grafu
-    days_grazing = model.feed_log.get("Grazing", 0) + model.feed_log.get("Grazing (No Supplement)", 0) + model.feed_log.get("Grazing+Starvation", 0)
-    days_stored = model.feed_log.get("Stored", 0) + model.feed_log.get("Grazing+Stored", 0)
-    days_market = model.feed_log.get("Market", 0) + model.feed_log.get("Starvation (Wait for Delivery)", 0) + model.feed_log.get("Starvation (No Hay)", 0)
-    days_stored += model.feed_log.get("Stored (Pasture Rest)", 0)
+    days_grazing = model.feed_log.get("Pastva", 0) + model.feed_log.get("Pastva (Bez příkrmu)", 0) + model.feed_log.get("Pastva + Hlad", 0)
+    days_stored = model.feed_log.get("Seno", 0) + model.feed_log.get("Pastva + Seno", 0)
+    days_market = model.feed_log.get("Nákup", 0) + model.feed_log.get("Hladovění (Čekání)", 0) + model.feed_log.get("Hladovění (Bez sena)", 0)
+    days_stored += model.feed_log.get("Seno (Ochrana)", 0)
     
     total_days = sum(model.feed_log.values())
     
@@ -880,7 +886,7 @@ st.altair_chart(bcs_chart, use_container_width=True)
 st.caption("BCS ovlivňuje plodnost a mortalitu. Cíl je držet se v zelené zóně (2.5 - 3.5). Pod 2.0 hrozí úhyn a neplodnost.")
 
 # --- 6.c PASTURE HEALTH ---
-st.subheader("🌱 Zdraví Pastviny (Ecological Loop)")
+st.subheader("🌱 Zdraví Pastviny (Ekologická smyčka)")
 
 pasture_chart = alt.Chart(df.reset_index()).mark_area(
     line={'color':'#27ae60'},
@@ -898,7 +904,7 @@ st.altair_chart(pasture_chart, use_container_width=True)
 st.caption("Pokud zdraví klesá, máte příliš mnoho ovcí na málo hektarů (Overgrazing). Tráva přestane růst.")
 
 # --- 6.d ADMIN DISECONOMY ---
-st.subheader("📉 Administrativní Zátěž (Diseconomy of Scale)")
+st.subheader("📉 Administrativní Zátěž (Neefektivita z rozsahu)")
 
 col_sim, col_theory = st.columns(2)
 
@@ -970,7 +976,7 @@ st.caption("Barevné pásy ukazují převládající počasí. Tmavě modrá = z
 # --- 7. EVENT LOG ---
 st.markdown("---")
 
-with st.expander("📜 Deník Farmáře (Events)", expanded=False):
+with st.expander("📜 Deník Farmáře (Události)", expanded=False):
     st.markdown("**Posledních 30 záznamů:**")
     for event in model.event_log[-30:]:
         st.text(event)
