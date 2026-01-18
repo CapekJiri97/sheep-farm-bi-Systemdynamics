@@ -147,6 +147,10 @@ class FarmModel:
             base_grass = 1.2
             base_drought = 0.001
             base_winter = 1.3
+        elif cfg.climate_profile == "UI_Custom":
+            base_grass = 1.0
+            base_drought = 0.0
+            base_winter = 1.0
         else:
             base_grass = 1.0
             base_drought = 0.005

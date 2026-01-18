@@ -47,9 +47,23 @@ with st.sidebar:
 
     with tab_strat:
         st.header("3. Pokročilé")
-        climate_map = {"Normální": "Normal", "Suchý": "Dry", "Horský": "Mountain"}
-        climate_label = st.selectbox("Klimatický profil", list(climate_map.keys()))
-        climate = climate_map[climate_label]
+        
+        # --- CLIMATE PRESETS LOGIC ---
+        if 'rain_val' not in st.session_state: st.session_state['rain_val'] = 100
+        if 'drought_val' not in st.session_state: st.session_state['drought_val'] = 0.5
+        if 'winter_val' not in st.session_state: st.session_state['winter_val'] = 100
+
+        def update_climate_preset():
+            sel = st.session_state.climate_selector
+            if sel == "Normální":
+                st.session_state.rain_val, st.session_state.drought_val, st.session_state.winter_val = 100, 0.5, 100
+            elif sel == "Suchý":
+                st.session_state.rain_val, st.session_state.drought_val, st.session_state.winter_val = 70, 2.0, 80
+            elif sel == "Horský":
+                st.session_state.rain_val, st.session_state.drought_val, st.session_state.winter_val = 120, 0.1, 130
+
+        st.selectbox("Klimatický profil (Přednastavení)", ["Normální", "Suchý", "Horský"], key="climate_selector", on_change=update_climate_preset, help="Nastaví posuvníky níže na typické hodnoty pro danou oblast.")
+        climate = "UI_Custom" # Pro UI používáme tento speciální profil, který se řídí čistě posuvníky
         
         machinery_map = {"Služby": "Services", "Vlastní": "Own"}
         machinery_label = st.radio("Sklizeň sena (Seč a lisování)", list(machinery_map.keys()), help="Služby = pronájem; Vlastní = vlastní stroj")
@@ -57,10 +71,10 @@ with st.sidebar:
         
         use_forecast = st.toggle("Plánovač Cashflow", value=True)
         
-        with st.expander("Nastavení Počasí (Scénáře)"):
-            rain_mod = st.slider("Intenzita srážek (Růst trávy %)", 50, 150, 100, help="100% = normál dle profilu. Ovlivňuje rychlost růstu trávy.") / 100.0
-            drought_add = st.slider("Riziko sucha (+%)", 0.0, 10.0, 0.0, 0.1, help="Zvyšuje pravděpodobnost sucha v létě.") / 100.0
-            winter_mod = st.slider("Délka zimy (%)", 50, 150, 100, help="Prodlouží/zkrátí zimní období.") / 100.0
+        with st.expander("Nastavení Počasí (Detail)", expanded=True):
+            rain_mod = st.slider("Intenzita srážek (Růst trávy %)", 50, 150, key="rain_val", help="100% = Standardní růst.") / 100.0
+            drought_add = st.slider("Riziko sucha (Denní %)", 0.0, 5.0, key="drought_val", step=0.1, help="Pravděpodobnost, že v letní den nastane sucho (tráva neroste).") / 100.0
+            winter_mod = st.slider("Délka zimy (%)", 50, 150, key="winter_val", help="100% = Standardní délka zimy.") / 100.0
         
         with st.expander("Tržní Strategie (Velkoobchod)"):
             m_quota = st.number_input("Limit prodeje ze dvora (ks/rok)", 0, 500, 40, help="Kolik zvířat prodáte sousedům za plnou cenu.")
