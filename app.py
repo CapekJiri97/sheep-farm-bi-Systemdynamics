@@ -1,3 +1,7 @@
+# Importujeme knihovny pro UI, data a grafy
+# streamlit (st): Framework pro tvorbu webové aplikace.
+# altair (alt): Knihovna pro interaktivní grafy.
+# model: Náš vlastní modul (soubor model.py), odkud bereme logiku farmy.
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -7,13 +11,17 @@ import time
 from model import FarmConfig, FarmModel, SCENARIOS, BASE_SCENARIO
 
 # --- CONFIGURATION ---
+# Nastavení stránky (titulek, ikona, rozložení na celou šířku).
 st.set_page_config(page_title="Ovčí farma - Systémová dynamika", layout="wide", page_icon="🚜")
 
 # --- SESSION STATE INIT ---
+# Session State slouží k uchování dat mezi obnoveními stránky (reruns).
+# Streamlit spouští celý skript znovu při každé interakci uživatele.
 if 'custom_scenarios' not in st.session_state:
     st.session_state['custom_scenarios'] = {}
 
 # --- SIDEBAR UI ---
+# 'with st.sidebar:' definuje blok kódu, který vykreslí prvky do levého panelu.
 with st.sidebar:
     st.title("Ovčí farma")
     
@@ -25,9 +33,12 @@ with st.sidebar:
     save_sc_container = st.container()
     
     # --- TABS FOR BETTER UI ORGANIZATION ---
+    # Rozdělení nastavení do záložek pro přehlednost.
     tab_main, tab_strat, tab_details = st.tabs(["Základ", "Strategie", "Detaily"])
     
     with tab_main:
+        # st.slider: Vytvoří posuvník. Vrací hodnotu, kterou uživatel vybral.
+        # st.number_input: Vytvoří pole pro zadání čísla.
         st.header("1. Kapacita a Infrastruktura")
         target_ewes = st.slider("Cílová kapacita (ovčín)", 10, 500, 60, help="Maximální počet bahnic. Určuje velikost potřebné budovy.")
         
@@ -49,6 +60,7 @@ with st.sidebar:
         st.header("3. Pokročilé")
         
         # --- CLIMATE PRESETS LOGIC ---
+        # Inicializace proměnných v session state pro slidery počasí, pokud neexistují.
         if 'rain_val' not in st.session_state: st.session_state['rain_val'] = 100
         if 'drought_val' not in st.session_state: st.session_state['drought_val'] = 0.5
         if 'winter_val' not in st.session_state: st.session_state['winter_val'] = 100
@@ -62,6 +74,7 @@ with st.sidebar:
             elif sel == "Horský":
                 st.session_state.rain_val, st.session_state.drought_val, st.session_state.winter_val = 120, 0.1, 130
 
+        # st.selectbox: Rozbalovací menu. on_change spustí funkci update_climate_preset při změně.
         st.selectbox("Klimatický profil (Přednastavení)", ["Normální", "Suchý", "Horský"], key="climate_selector", on_change=update_climate_preset, help="Nastaví posuvníky níže na typické hodnoty pro danou oblast.")
         climate = "UI_Custom" # Pro UI používáme tento speciální profil, který se řídí čistě posuvníky
         
@@ -71,6 +84,7 @@ with st.sidebar:
         
         use_forecast = st.toggle("Plánovač Cashflow", value=True)
         
+        # st.expander: Sbalitelná sekce pro pokročilá nastavení.
         with st.expander("Nastavení Počasí (Detail)", expanded=True):
             rain_mod = st.slider("Intenzita srážek (Růst trávy %)", 50, 150, key="rain_val", help="100% = Standardní růst.") / 100.0
             drought_add = st.slider("Riziko sucha (Denní %)", 0.0, 5.0, key="drought_val", step=0.1, help="Pravděpodobnost, že v letní den nastane sucho (tráva neroste).") / 100.0
@@ -130,6 +144,7 @@ with st.sidebar:
 
     # --- SAVE SCENARIO UI ---
     with save_sc_container:
+        # Logika pro uložení vlastního scénáře do paměti (session state).
         with st.expander("Uložit aktuální nastavení (pro Monte Carlo)"):
             st.info("Tento scénář bude uložen pod kategorii **C (Vlastní)**.")
             new_sc_name = st.text_input("Název scénáře", placeholder="Např. Můj optimalizovaný chov")
@@ -168,6 +183,7 @@ with st.sidebar:
         sim_seed = st.number_input("Seed simulace", value=1337420, min_value=0, max_value=9999999999, help="Fixní seed zajistí, že náhoda (počasí, ceny) bude stejná pro porovnání scénářů.")
 
 if mode_switch == "Monte Carlo Laboratoř":
+    # --- SEKCE MONTE CARLO ---
     st.title("Monte Carlo Laboratoř")
     st.markdown("Simulace tisíců běhů pro ověření robustnosti scénářů.")
     
@@ -194,6 +210,7 @@ if mode_switch == "Monte Carlo Laboratoř":
     labor_override = mc_cols[1].radio("Náklady na práci (Labor)", ["Dle scénáře", "Vše ZAPNUTO", "Vše VYPNUTO"], help="Přepíše nastavení ve scénářích.")
     
     # 1. Merge custom scenarios from session state
+    # Spojíme vestavěné scénáře s uživatelskými.
     # Work with a local copy to ensure clean state on every rerun
     active_scenarios_pool = SCENARIOS.copy()
     if st.session_state['custom_scenarios']:
@@ -207,6 +224,7 @@ if mode_switch == "Monte Carlo Laboratoř":
     # Filter scenarios based on selection
     active_scenarios = {k: v for k, v in active_scenarios_pool.items() if k[0] in selected_groups}
     
+    # Tlačítko pro spuštění hromadné simulace.
     if st.button(f"🚀 Spustit simulaci ({len(active_scenarios) * n_runs} běhů)"):
         run_summaries = []
         quarterly_data = []
@@ -252,6 +270,7 @@ if mode_switch == "Monte Carlo Laboratoř":
             
             for i in range(n_runs):
                 # Random seed for each run
+                # Pro každý běh nastavíme unikátní seed, ale konzistentní napříč scénáři.
                 # FIX: Consistent seeds across scenarios (Seed 0 is always Seed 0)
                 current_seed = sim_seed + i
                 np.random.seed(current_seed) 
@@ -283,6 +302,7 @@ if mode_switch == "Monte Carlo Laboratoř":
                 # Create config object
                 mc_cfg = FarmConfig(**current_run_kwargs)
                 
+                # Spuštění modelu
                 mc_model = FarmModel(mc_cfg)
                 mc_df = mc_model.run()
                 
@@ -354,6 +374,7 @@ if mode_switch == "Monte Carlo Laboratoř":
         
     # Pokud máme výsledky v paměti, zobrazíme je (i po restartu stránky)
     if 'mc_results' in st.session_state:
+        # --- VIZUALIZACE VÝSLEDKŮ (ALTAIR) ---
         # --- VISUALIZATION ---
         df_summary = st.session_state['mc_results']['summary']
         df_quarterly = st.session_state['mc_results']['quarterly']
@@ -372,6 +393,7 @@ if mode_switch == "Monte Carlo Laboratoř":
         # Filter data for chart
         df_slice = df_quarterly[df_quarterly["Kvartál"] == selected_q]
         
+        # Boxplot ukazuje rozdělení (medián, kvartily, extrémy).
         chart_profit = alt.Chart(df_slice).mark_boxplot().encode(
             x=alt.X("Scénář:N", title=None),
             y=alt.Y("Cash:Q", title=f"Hotovost v {selected_q} (Kč)"),
@@ -391,6 +413,7 @@ if mode_switch == "Monte Carlo Laboratoř":
         st.altair_chart(chart_eff, use_container_width=True)
         
         # 3. RISK CHART (X = Sheep Count)
+        # Scatter plot (bublinový graf) pro porovnání rizika a zisku.
         st.subheader("Risk vs Reward (Riziko vs Zisk)")
         risk_agg = df_summary.groupby("Scénář").agg(
             Riziko_Bankrotu=("Bankrot", "mean"),
@@ -449,6 +472,7 @@ if mode_switch == "Monte Carlo Laboratoř":
             ).add_params(selection).properties(title="Degradace Pastviny", height=300)
             
         else:
+            # Pásma spolehlivosti (Confidence Intervals)
             # Confidence Interval Aggregation
             ci_agg = df_quarterly.groupby(["Scénář", "Datum"]).agg(
                 Mean_Cash=("Cash", "mean"),
@@ -518,6 +542,7 @@ if mode_switch == "Monte Carlo Laboratoř":
             
     st.stop() # Stop execution here so standard dashboard doesn't render below
 
+# --- SPUŠTĚNÍ JEDNOTLIVÉ SIMULACE (STANDARDNÍ REŽIM) ---
 # --- RUN SIMULATION ---
 cfg = FarmConfig(
     sim_years=5, 
@@ -1064,6 +1089,56 @@ if snapshot_dates:
     selected_date = st.select_slider(
         "Vyberte datum pro zobrazení struktury",
         options=snapshot_dates,
+        format_func=lambda x: x.strftime("%b %Y"),
+        value=snapshot_dates[-1]
+    )
+    
+    snapshot_data = model.yearly_age_snapshots[selected_date]
+    df_age_snap = pd.DataFrame(snapshot_data)
+    
+    age_chart = alt.Chart(df_age_snap).mark_bar().encode(
+        x=alt.X("Age:Q", bin=alt.Bin(step=1), title="Věk (roky)"),
+        y=alt.Y("count()", title="Počet ovcí"),
+        color=alt.Color("Category:N", title="Kategorie"),
+        tooltip=[alt.Tooltip("Category:N", title="Kategorie"), alt.Tooltip("count()", title="Počet")]
+    )
+    
+    limit_line = alt.Chart(pd.DataFrame({'x': [cfg.max_ewe_age]})).mark_rule(color='red', strokeDash=[5, 5]).encode(
+        x='x:Q'
+    )
+
+    final_age_chart = (age_chart + limit_line).properties(
+        title=f"Struktura stáda: {selected_date.strftime('%B %Y')}"
+    )
+    
+    st.altair_chart(final_age_chart, use_container_width=True)
+
+st.caption("Histogram ukazuje rozložení věku bahnic. Měli byste vidět 'schody' (kohorty) a propad po dosažení věku vyřazení.")
+        format_func=lambda x: x.strftime("%b %Y"),
+        value=snapshot_dates[-1]
+    )
+    
+    snapshot_data = model.yearly_age_snapshots[selected_date]
+    df_age_snap = pd.DataFrame(snapshot_data)
+    
+    age_chart = alt.Chart(df_age_snap).mark_bar().encode(
+        x=alt.X("Age:Q", bin=alt.Bin(step=1), title="Věk (roky)"),
+        y=alt.Y("count()", title="Počet ovcí"),
+        color=alt.Color("Category:N", title="Kategorie"),
+        tooltip=[alt.Tooltip("Category:N", title="Kategorie"), alt.Tooltip("count()", title="Počet")]
+    )
+    
+    limit_line = alt.Chart(pd.DataFrame({'x': [cfg.max_ewe_age]})).mark_rule(color='red', strokeDash=[5, 5]).encode(
+        x='x:Q'
+    )
+
+    final_age_chart = (age_chart + limit_line).properties(
+        title=f"Struktura stáda: {selected_date.strftime('%B %Y')}"
+    )
+    
+    st.altair_chart(final_age_chart, use_container_width=True)
+
+st.caption("Histogram ukazuje rozložení věku bahnic. Měli byste vidět 'schody' (kohorty) a propad po dosažení věku vyřazení.")
         format_func=lambda x: x.strftime("%b %Y"),
         value=snapshot_dates[-1]
     )

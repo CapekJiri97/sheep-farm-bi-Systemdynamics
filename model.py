@@ -1,12 +1,22 @@
+# Importujeme potřebné knihovny
+# numpy (np): Pro rychlé matematické operace a práci s poli (arrays).
+# pandas (pd): Pro práci s tabulkovými daty (DataFrames) a časovými řadami.
+# dataclasses: Pro snadnou definici tříd, které drží data (konfigurace).
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 
 # --- HELPER FUNCTIONS ---
 def get_stochastic_value(mean, std, min_val=0.0):
+    """
+    Pomocná funkce pro generování náhodných čísel s normálním rozdělením (Gaussova křivka).
+    Zajišťuje, že hodnota neklesne pod min_val (např. cena nemůže být záporná).
+    """
     val = np.random.normal(mean, std)
     return max(min_val, val)
 
+# @dataclass je dekorátor, který automaticky vygeneruje metodu __init__ a další.
+# Slouží jako "přepravka" pro konfigurační parametry farmy.
 @dataclass
 class FarmConfig:
     # 1. SCALE & LAND
@@ -110,14 +120,19 @@ class FarmConfig:
     labor_hours_barn_m2_year: float = 0.5
 
 class FarmModel:
+    """
+    Hlavní třída modelu. Obsahuje stav farmy a logiku simulace.
+    """
     def __init__(self, cfg: FarmConfig):
+        # Uložíme si konfiguraci do instance třídy (self.cfg)
         self.cfg = cfg
+        # Inicializace data simulace
         self.date = pd.Timestamp("2025-01-01")
         
         # --- HERD ---
         self.ewes = cfg.initial_ewes
         # OPTIMALIZACE: Věk jako numpy array pro vektorizaci
-        self.ewe_ages = np.full(cfg.initial_ewes, 3.0, dtype=np.float32)
+        self.ewe_ages = np.random.uniform(1.0, 6.0, cfg.initial_ewes).astype(np.float32)
         self.rams_breeding = max(1, int(cfg.initial_ewes / 30))
         self.ram_age = 3.0
         self.lambs_male = 0
@@ -173,7 +188,9 @@ class FarmModel:
         self.feed_log = {"Pastva": 0, "Seno": 0, "Nákup": 0}
         
         # OPTIMALIZACE: Před-alokace historie (místo appendování dictů)
+        # Vypočítáme celkový počet kroků (dní) simulace.
         self.total_steps = self.cfg.sim_years * 365
+        # Vytvoříme rozsah dat pro celou simulaci.
         self.dates = pd.date_range(start="2025-01-01", periods=self.total_steps, freq="D")
         # Předvypočítané kalendářní údaje pro rychlý přístup
         self.months = self.dates.month.values
@@ -181,6 +198,8 @@ class FarmModel:
         self.day_of_years = self.dates.dayofyear.values
         
         # Numpy pole pro historii (mnohem rychlejší zápis)
+        # Místo abychom přidávali řádky do seznamu (což je pomalé), vytvoříme předem
+        # prázdná pole nul (np.zeros) a budeme do nich zapisovat podle indexu dne.
         self.h_cols = ["Cash", "Ewes", "Lambs", "Lambs Male", "Lambs Female", "Total Animals", 
                        "Hay Stock", "Income", "Exp_Feed", "Exp_Vet", "Exp_Machinery", "Exp_Mow", 
                        "Exp_Shearing", "Exp_RamPurchase", "Exp_Admin", "Exp_Labor", "Labor Hours", 
@@ -218,6 +237,10 @@ class FarmModel:
         return (winter_feed_cost + 40000) * (1.0 + self.cfg.safety_margin)
 
     def step(self, t):
+        """
+        Jeden krok simulace (jeden den).
+        Parametr 't' je index dne (0, 1, 2...).
+        """
         # OPTIMALIZACE: Použití předvypočítaných hodnot z numpy polí
         self.date = self.dates[t] # Pro logování a kompatibilitu
         month = self.months[t]
@@ -284,6 +307,7 @@ class FarmModel:
         day_ram_purchase = 0.0
         day_machinery = 0.0
         day_admin = 0.0
+        day_tax = 0.0
         
         # Drought simulation
         is_drought = False
@@ -531,7 +555,8 @@ class FarmModel:
             
             # Náhodné vyřazení do počtu
             candidates = np.where(keep_mask)[0]
-            if len(candidates) > needed_random_cull:
+            needed_random_cull = min(len(candidates), needed_random_cull)
+            if needed_random_cull > 0:
                 random_culls = np.random.choice(candidates, needed_random_cull, replace=False)
                 keep_mask[random_culls] = False
             
@@ -594,8 +619,9 @@ class FarmModel:
         
         # Land Tax
         if month == 12 and self.date.day == 31:
-             var_cost += self.cfg.land_area * self.cfg.tax_land_ha
-             var_cost += (self.cfg.barn_area_m2 + self.cfg.hay_barn_area_m2) * self.cfg.tax_building_m2
+             day_tax += self.cfg.land_area * self.cfg.tax_land_ha
+             day_tax += (self.cfg.barn_area_m2 + self.cfg.hay_barn_area_m2) * self.cfg.tax_building_m2
+             var_cost += day_tax
 
         # Labor
         labor_animals = total_adults * self.cfg.labor_hours_per_ewe_year
@@ -621,6 +647,9 @@ class FarmModel:
         
         total_out = feed_cost + var_cost + daily_overhead + labor_val + shock_val
         self.cash += income - total_out
+        
+        # Clamping BCS to realistic limits
+        self.bcs = max(1.0, min(5.0, self.bcs))
         
         # Mortality (Simple daily check)
         mort_prob_ewe = (self.cfg.mortality_ewe_mean / 365)
@@ -681,7 +710,7 @@ class FarmModel:
         self.history_store["Exp_Admin"][t] = day_admin
         self.history_store["Exp_Labor"][t] = labor_val
         self.history_store["Labor Hours"][t] = daily_hours
-        self.history_store["Exp_Overhead"][t] = daily_overhead
+        self.history_store["Exp_Overhead"][t] = daily_overhead + day_tax
         self.history_store["Exp_Shock"][t] = shock_val
         self.history_store["Exp_Variable"][t] = day_vet + day_mow + day_shearing + day_ram_purchase + day_machinery
         self.history_store["BCS"][t] = self.bcs
@@ -694,11 +723,15 @@ class FarmModel:
         self.history_store["Is_Drought"][t] = 1 if is_drought else 0
 
     def run(self):
+        """
+        Spustí simulaci pro všechny dny.
+        """
         # OPTIMALIZACE: Cyklus přes indexy
         for t in range(self.total_steps): 
             self.step(t)
         
         # Vytvoření DataFrame až na konci z numpy polí
+        # Pandas DataFrame vytvoříme až nakonec z naplněných numpy polí. Je to bleskurychlé.
         df = pd.DataFrame(self.history_store, index=self.dates)
         df["Feed_Source"] = self.feed_source_store
         df.index.name = "Date"
