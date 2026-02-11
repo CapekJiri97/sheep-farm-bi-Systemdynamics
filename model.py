@@ -4,7 +4,7 @@
 # dataclasses: Pro snadnou definici tříd, které drží data (konfigurace).
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # --- HELPER FUNCTIONS ---
 def get_stochastic_value(mean, std, min_val=0.0):
@@ -38,7 +38,7 @@ class FarmConfig:
     price_ram_purchase: float = 10000.0
     
     # Market Loop (Tiered Pricing)
-    market_local_limit: int = 40        # Kolik ovcí prodám "ze dvora" za plnou cenu
+    market_quota_kg: float = 800.0      # Limit prodeje ze dvora (kg masa/rok)
     price_meat_wholesale: float = 55.0  # Výkupní cena pro nadprodukci (Kč/kg)
     
     # Ecological Loop
@@ -118,6 +118,20 @@ class FarmConfig:
     labor_hours_per_ha_year: float = 10.0
     labor_hours_fix_year: float = 200.0
     labor_hours_barn_m2_year: float = 0.5
+    
+    # 8. LOGISTICS (Sektor 8)
+    enable_freezing: bool = False       
+    freezer_capacity_kg: float = 500.0 
+    freezer_capex: float = 30000.0     
+    electricity_price: float = 6.0     
+    cooling_energy_per_kg: float = 0.015 
+    
+    # Sezónní poptávka (koeficienty prodejů masa v průběhu roku)
+    seasonal_demand_factors: dict = field(default_factory=lambda: {
+        1: 0.8, 2: 0.8, 3: 2.0, 4: 3.0, 
+        5: 1.0, 6: 1.2, 7: 1.5, 8: 1.5, 
+        9: 1.0, 10: 1.0, 11: 0.8, 12: 2.0 
+    })
 
 class FarmModel:
     """
@@ -148,6 +162,14 @@ class FarmModel:
         self.feed_orders = []     # Fronta objednávek: list of tuples (delivery_date, amount)
         self.pregnant_ewes = 0    # Počet březích bahnic (Gestační zpoždění)
         self.yearly_age_snapshots = {} # Pro UI graf věkové struktury v čase
+        
+        # --- SEKTOR 8 (Logistika/Mrazák) ---
+        self.frozen_meat_kg = 0.0
+        self.limit_kg_annual = cfg.market_quota_kg
+        self.quota_remaining_kg = self.limit_kg_annual
+        
+        if cfg.enable_freezing:
+            self.cash -= cfg.freezer_capex
         
         # --- WEATHER STATE (Autocorrelation) ---
         self.weather_regime = 1.0  # 1.0 = normál, <1 sucho, >1 vlhko (Týdenní trend)
@@ -205,7 +227,8 @@ class FarmModel:
                        "Exp_Shearing", "Exp_RamPurchase", "Exp_Admin", "Exp_Labor", "Labor Hours", 
                        "Exp_Overhead", "Exp_Shock", "Exp_Variable", "BCS", "Meat_Price", 
                        "Pasture_Health", "Perceived_BCS", "Weather_Regime", "Is_Winter", "Is_Drought",
-                       "Inc_Meat", "Inc_Hay", "Inc_Subsidy", "Sold_Animals", "Sold_Hay"]
+                       "Inc_Meat", "Inc_Hay", "Inc_Subsidy", "Sold_Animals", "Sold_Hay", "Frozen_Stock",
+                       "Sold_Fresh_Kg", "Sold_Frozen_Kg"]
         self.history_store = {col: np.zeros(self.total_steps, dtype=np.float32) for col in self.h_cols}
         self.feed_source_store = [None] * self.total_steps
         
@@ -272,6 +295,43 @@ class FarmModel:
         base_meat_price = get_stochastic_value(self.cfg.price_meat_avg, self.cfg.meat_price_std)
         if month in [3, 4]: base_meat_price *= 1.25 # Easter premium
         
+        # --- SEKTOR 8: LOGISTIKA ---
+        
+        # Reset Roční Kvóty: Legislativa dovoluje prodat jen určité množství "ze dvora" bez daní/kontrol.
+        # 1. ledna se tento limit obnoví.
+        if month == 1 and day == 1:
+            self.quota_remaining_kg = self.limit_kg_annual
+        
+        # Náklady na chlazení
+        # Pokud máme maso v mrazáku, platíme elektřinu.
+        if self.frozen_meat_kg > 0:
+            daily_kwh = self.frozen_meat_kg * self.cfg.cooling_energy_per_kg
+            cost_elec = daily_kwh * self.cfg.electricity_price
+            self.cash -= cost_elec
+            var_cost += cost_elec 
+        
+        # Průběžný prodej z mrazáku
+        # Zákazníci chodí celý rok. Pokud máme zásoby, prodáváme.
+        if self.frozen_meat_kg > 0:
+            base_demand = self.cfg.market_quota_kg / 365.0
+            season_factor = self.cfg.seasonal_demand_factors.get(month, 1.0)
+            todays_demand = get_stochastic_value(base_demand * season_factor, base_demand * 0.5)
+            
+            sold_kg = min(self.frozen_meat_kg, todays_demand)
+            
+            # Dvojí ceny: Do limitu prodáváme draze (sousedům), nad limit levně (výkup).
+            if sold_kg > 0:
+                premium_kg = min(sold_kg, self.quota_remaining_kg)
+                wholesale_kg = sold_kg - premium_kg
+                
+                revenue = (premium_kg * base_meat_price) + (wholesale_kg * self.cfg.price_meat_wholesale)
+                self.cash += revenue
+                self.frozen_meat_kg -= sold_kg
+                self.quota_remaining_kg = max(0, self.quota_remaining_kg - premium_kg)
+                inc_frozen_sales = revenue # Note: inc_frozen_sales variable needs to be added to income sum
+                inc_meat += revenue # Adding to inc_meat for simplicity in history
+                sold_frozen_kg = sold_kg
+
         # 2. SEASON CONTROL
         if self.is_winter and day > self.winter_end_day:
             if np.random.random() < 0.1: 
@@ -520,24 +580,6 @@ class FarmModel:
                     self.hay_stock_bales -= sold_hay_planner
             
             # TRŽNÍ SMYČKA: Tiered Pricing
-            # Máme limit pro lokální prodej (vysoká cena). Zbytek jde do výkupu (nízká cena).
-            quota_remaining = self.cfg.market_local_limit
-            
-            def get_blended_price(count, retail_price):
-                nonlocal quota_remaining
-                if count <= 0: return 0.0
-                local_part = min(count, quota_remaining)
-                wholesale_part = count - local_part
-                quota_remaining = max(0, quota_remaining - local_part)
-                
-                total_rev = (local_part * retail_price) + (wholesale_part * self.cfg.price_meat_wholesale)
-                return total_rev / count # Průměrná cena za kg pro tuto várku
-            
-            # 1. Sell Males
-            p_male = get_blended_price(self.lambs_male, base_meat_price)
-            inc_meat += self.lambs_male * 40 * p_male
-            sold_animals += self.lambs_male
-            self.lambs_male = 0
             
             # 2. Renew Females (S respektem ke kapacitě ovčína)
             # CULLING LOGIC (Aging Chain Exit)
@@ -576,9 +618,36 @@ class FarmModel:
             
             # Zbytek prodáme
             sell_females = self.lambs_female - keep
-            p_female = get_blended_price(sell_females, base_meat_price)
-            inc_meat += sell_females * 35.0 * p_female
-            sold_animals += sell_females
+            
+            # --- NOVÁ LOGIKA PRODEJE (Sektor 8) ---
+            meat_lambs_count = self.lambs_male + sell_females
+            total_meat_kg = meat_lambs_count * 15.0 # 15 kg masa z kusu (výtěžnost)
+            
+            to_freeze_kg = 0.0
+            to_sell_fresh_kg = 0.0
+            
+            if self.cfg.enable_freezing:
+                free_space = self.cfg.freezer_capacity_kg - self.frozen_meat_kg
+                to_freeze_kg = min(total_meat_kg, max(0, free_space))
+                to_sell_fresh_kg = total_meat_kg - to_freeze_kg
+            else:
+                to_sell_fresh_kg = total_meat_kg
+            
+            # Plnění mrazáku
+            self.frozen_meat_kg += to_freeze_kg
+            
+            # Prodej čerstvého
+            if to_sell_fresh_kg > 0:
+                premium_kg = min(to_sell_fresh_kg, self.quota_remaining_kg)
+                cheap_kg = to_sell_fresh_kg - premium_kg
+                
+                revenue = (premium_kg * base_meat_price) + (cheap_kg * self.cfg.price_meat_wholesale)
+                inc_meat += revenue
+                self.quota_remaining_kg = max(0, self.quota_remaining_kg - premium_kg)
+                sold_fresh_kg = to_sell_fresh_kg
+            
+            sold_animals += meat_lambs_count
+            self.lambs_male = 0
             
             # 3. Add kept lambs to herd (Pipeline Entry)
             # Jehničky vstupují do stáda ve věku cca 0.6 roku (7 měsíců)
@@ -721,6 +790,9 @@ class FarmModel:
         self.feed_source_store[t] = feed_source
         self.history_store["Is_Winter"][t] = 1 if self.is_winter else 0
         self.history_store["Is_Drought"][t] = 1 if is_drought else 0
+        self.history_store["Frozen_Stock"][t] = self.frozen_meat_kg
+        self.history_store["Sold_Fresh_Kg"][t] = sold_fresh_kg
+        self.history_store["Sold_Frozen_Kg"][t] = sold_frozen_kg
 
     def run(self):
         """

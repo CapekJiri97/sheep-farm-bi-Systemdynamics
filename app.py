@@ -82,6 +82,8 @@ with st.sidebar:
         machinery_label = st.radio("Sklizeň sena (Seč a lisování)", list(machinery_map.keys()), help="Služby = pronájem; Vlastní = vlastní stroj")
         machinery = machinery_map[machinery_label]
         
+        use_freezing = st.toggle("Aktivovat Mrazírny (Sektor 8)", value=True, help="Umožňuje mrazit maso a prodávat ho v průběhu roku za lepší ceny.")
+        
         use_forecast = st.toggle("Plánovač Cashflow", value=True)
         
         # st.expander: Sbalitelná sekce pro pokročilá nastavení.
@@ -91,7 +93,7 @@ with st.sidebar:
             winter_mod = st.slider("Délka zimy (%)", 50, 150, key="winter_val", help="100% = Standardní délka zimy.") / 100.0
         
         with st.expander("Tržní Strategie (Velkoobchod)"):
-            m_quota = st.number_input("Limit prodeje ze dvora (ks/rok)", 0, 500, 40, help="Kolik zvířat prodáte sousedům za plnou cenu.")
+            m_quota_kg = st.number_input("Limit prodeje ze dvora (kg masa/rok)", 0, 5000, 800, help="Kolik kg masa prodáte sousedům za plnou cenu.")
             m_wholesale = st.number_input("Výkupní cena (Nadprodukce) Kč/kg", 30.0, 80.0, 55.0, help="Cena pro výkup (jatka), když zahltíte lokální trh.")
 
         with st.expander("Systémová Dynamika (Zpoždění)"):
@@ -123,6 +125,12 @@ with st.sidebar:
             o_capex = st.number_input("Vlastní: Cena stroje (Kč)", 100000.0, 5000000.0, 600000.0, 50000.0)
             o_fuel = st.number_input("Vlastní: Nafta seč (Kč/ha)", 100.0, 1000.0, 400.0, 50.0)
             o_repair = st.number_input("Vlastní: Opravy ročně (Kč)", 0.0, 100000.0, 15000.0, 1000.0)
+            
+        with st.expander("Logistika a Mrazírny (Sektor 8)"):
+            p_freezer_cap = st.number_input("Kapacita mrazáku (kg)", 100.0, 5000.0, 500.0, 50.0)
+            p_freezer_capex = st.number_input("Cena mrazáku (Kč)", 5000.0, 200000.0, 30000.0, 1000.0)
+            p_elec_price = st.number_input("Cena elektřiny (Kč/kWh)", 1.0, 20.0, 6.0, 0.5)
+            p_elec_usage = st.number_input("Spotřeba chlazení (kWh/kg/den)", 0.001, 0.5, 0.015, 0.001)
 
         with st.expander("Dotace a Daně"):
             sub_ha = st.number_input("SAPS (Kč/ha)", 0.0, 20000.0, 8500.0, 100.0)
@@ -155,7 +163,7 @@ with st.sidebar:
                     custom_sc.update({
                         "sim_years": 5, "land_area": area, "meadow_share": meadow_pct/100.0, "barn_capacity": target_ewes,
                         "initial_ewes": start_ewes, "barn_area_m2": barn_m2, "hay_barn_area_m2": hay_barn_m2, "capital": cap,
-                        "price_meat_avg": meat_price, "market_local_limit": m_quota, "price_meat_wholesale": m_wholesale,
+                        "price_meat_avg": meat_price, "market_quota_kg": m_quota_kg, "price_meat_wholesale": m_wholesale,
                         "delay_bcs_perception": delay_bcs, "delay_feed_delivery": delay_mat, "initial_hay_bales": start_hay,
                         "enable_forecasting": use_forecast, "safety_margin": 0.2, "include_labor_cost": labor_on,
                         "climate_profile": climate, "machinery_mode": machinery, "rain_growth_global_mod": rain_mod,
@@ -168,8 +176,10 @@ with st.sidebar:
                         "machinery_repair_mean": o_repair, "subsidy_ha_mean": sub_ha, "subsidy_sheep_mean": sub_sheep,
                         "tax_land_ha": tax_land, "tax_building_m2": tax_build, "overhead_base_year": ov_base,
                         "barn_maintenance_m2_year": maint_barn_m2, "admin_base_cost": adm_base, "admin_complexity_factor": adm_factor,
-                        "wage_hourly": wage, "labor_hours_per_ewe_year": labor_h, "labor_hours_per_ha_year": labor_ha,
-                        "labor_hours_fix_year": labor_fix, "labor_hours_barn_m2_year": labor_barn_m2, "shock_prob_daily": shock_p
+                        "wage_hourly": wage, "labor_hours_per_ewe_year": labor_h, "labor_hours_per_ha_year": labor_ha, 
+                        "labor_hours_fix_year": labor_fix, "labor_hours_barn_m2_year": labor_barn_m2, "shock_prob_daily": shock_p,
+                        "enable_freezing": use_freezing, "freezer_capacity_kg": p_freezer_cap, "freezer_capex": p_freezer_capex,
+                        "electricity_price": p_elec_price, "cooling_energy_per_kg": p_elec_usage
                     })
                     
                     # Uložíme do session state s prefixem "C." (Custom)
@@ -196,7 +206,7 @@ if mode_switch == "Monte Carlo Laboratoř":
             "Cena Masa": "price_meat_avg",
             "Cena Nafty": "own_mow_fuel_ha",
             "Počasí (Růst)": "rain_growth_global_mod",
-            "Lokální Trh": "market_local_limit",
+            "Lokální Trh": "market_quota_kg",
             "Cena Balíků": "price_bale_sell_winter",
             "Plodnost": "fertility_mean"
         }
@@ -240,7 +250,7 @@ if mode_switch == "Monte Carlo Laboratoř":
         base_kwargs = {
             "sim_years": 5, "land_area": area, "meadow_share": meadow_pct/100.0, "barn_capacity": target_ewes,
             "initial_ewes": start_ewes, "barn_area_m2": barn_m2, "hay_barn_area_m2": hay_barn_m2, "capital": cap,
-            "price_meat_avg": meat_price, "market_local_limit": m_quota, "price_meat_wholesale": m_wholesale,
+            "price_meat_avg": meat_price, "market_quota_kg": m_quota_kg, "price_meat_wholesale": m_wholesale,
             "delay_bcs_perception": delay_bcs, "delay_feed_delivery": delay_mat, "initial_hay_bales": start_hay,
             "enable_forecasting": use_forecast, "safety_margin": 0.2, "include_labor_cost": labor_on,
             "climate_profile": climate, "machinery_mode": machinery, "rain_growth_global_mod": rain_mod,
@@ -288,8 +298,8 @@ if mode_switch == "Monte Carlo Laboratoř":
                             current_run_kwargs["price_bale_sell_winter"] *= factor
                             current_run_kwargs["price_bale_sell_summer"] *= factor
                             sens_log[label] = current_run_kwargs["price_bale_sell_winter"]
-                        elif key == "market_local_limit":
-                            current_run_kwargs[key] = int(current_run_kwargs[key] * factor)
+                        elif key == "market_quota_kg":
+                            current_run_kwargs[key] = current_run_kwargs[key] * factor
                             sens_log[label] = current_run_kwargs[key]
                         else:
                             current_run_kwargs[key] *= factor
@@ -554,7 +564,7 @@ cfg = FarmConfig(
     hay_barn_area_m2=hay_barn_m2,
     capital=cap,
     price_meat_avg=meat_price, 
-    market_local_limit=m_quota,
+    market_quota_kg=m_quota_kg,
     price_meat_wholesale=m_wholesale,
     delay_bcs_perception=delay_bcs,
     delay_feed_delivery=delay_mat,
@@ -601,9 +611,16 @@ cfg = FarmConfig(
     wage_hourly=wage,
     labor_hours_per_ewe_year=labor_h,
     labor_hours_per_ha_year=labor_ha,
-    labor_hours_fix_year=labor_fix,
-    labor_hours_barn_m2_year=labor_barn_m2,
-    shock_prob_daily=shock_p
+    labor_hours_fix_year=labor_fix, 
+    labor_hours_barn_m2_year=labor_barn_m2, 
+    shock_prob_daily=shock_p,
+    
+    # Sector 8
+    enable_freezing=use_freezing,
+    freezer_capacity_kg=p_freezer_cap,
+    freezer_capex=p_freezer_capex,
+    electricity_price=p_elec_price,
+    cooling_energy_per_kg=p_elec_usage
 )
 
 np.random.seed(sim_seed)
@@ -678,23 +695,43 @@ herd_chart = alt.Chart(df_herd_melt).mark_area(opacity=0.7).encode(
 )
 st.altair_chart(herd_chart, use_container_width=True)
 
-# --- 3. HAY MANAGEMENT ---
-st.subheader("Seno - výroba a spotřeba")
+# --- 3. SKLADOVÉ ZÁSOBY (Seno & Maso) ---
+st.subheader("Skladové zásoby (Seno & Maso)")
 
-hay_chart = alt.Chart(df.reset_index()).mark_area(
-    line={'color':'#f39c12'},
-    color=alt.Gradient(
-        gradient='linear',
-        stops=[alt.GradientStop(color='black', offset=0), alt.GradientStop(color='#f39c12', offset=1)],
-        x1=1, x2=1, y1=1, y2=0
+col_hay, col_meat = st.columns(2)
+
+with col_hay:
+    st.markdown("**Seno (Balíky)**")
+    hay_chart = alt.Chart(df.reset_index()).mark_area(
+        line={'color':'#f39c12'},
+        color=alt.Gradient(
+            gradient='linear',
+            stops=[alt.GradientStop(color='black', offset=0), alt.GradientStop(color='#f39c12', offset=1)],
+            x1=1, x2=1, y1=1, y2=0
+        )
+    ).encode(
+        x=alt.X('Date:T', title='Datum'),
+        y=alt.Y('Hay Stock:Q', title='Balíky sena'),
+        tooltip=['Date:T', alt.Tooltip('Hay Stock:Q', format='.0f')]
+    ).properties(height=300)
+    st.altair_chart(hay_chart, use_container_width=True)
+
+with col_meat:
+    st.markdown("**Prodeje Masa (kg)**")
+    base = alt.Chart(df.reset_index()).encode(x=alt.X('Date:T', title='Datum'))
+    
+    fresh = base.mark_bar(color='#e74c3c').encode(
+        y=alt.Y('Sold_Fresh_Kg:Q', title='Čerstvé (kg)', axis=alt.Axis(titleColor='#e74c3c')),
+        tooltip=[alt.Tooltip('Date:T'), alt.Tooltip('Sold_Fresh_Kg:Q', title='Čerstvé', format='.1f')]
     )
-).encode(
-    x=alt.X('Date:T', title='Datum'),
-    y=alt.Y('Hay Stock:Q', title='Balíky sena'),
-    tooltip=['Date:T', alt.Tooltip('Hay Stock:Q', format='.0f')]
-)
-st.altair_chart(hay_chart, use_container_width=True)
-st.caption("Červen = senoseč, září = otava. Zimní úbytek = spotřeba. Červená čára = kritický stav zásob.")
+    
+    frozen = base.mark_line(color='#3498db', strokeWidth=2).encode(
+        y=alt.Y('Sold_Frozen_Kg:Q', title='Mražené (kg)', axis=alt.Axis(titleColor='#3498db')),
+        tooltip=[alt.Tooltip('Date:T'), alt.Tooltip('Sold_Frozen_Kg:Q', title='Mražené', format='.1f')]
+    )
+    
+    meat_chart = alt.layer(fresh, frozen).resolve_scale(y='independent').properties(height=300)
+    st.altair_chart(meat_chart, use_container_width=True)
 
 # --- 4. FINANCIAL OVERVIEW (STACKED CASHFLOW) ---
 st.subheader("Cashflow a ziskovost")
