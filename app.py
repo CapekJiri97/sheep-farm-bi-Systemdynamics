@@ -130,7 +130,7 @@ with st.sidebar:
             p_freezer_cap = st.number_input("Kapacita mrazáku (kg)", 100.0, 5000.0, 500.0, 50.0)
             p_freezer_capex = st.number_input("Cena mrazáku (Kč)", 5000.0, 200000.0, 30000.0, 1000.0)
             p_elec_price = st.number_input("Cena elektřiny (Kč/kWh)", 1.0, 20.0, 6.0, 0.5)
-            p_elec_usage = st.number_input("Spotřeba chlazení (kWh/kg/den)", 0.001, 0.5, 0.015, 0.001)
+            p_elec_usage = st.number_input("Spotřeba chlazení (kWh/kg/den)", 0.001, 0.5, FarmConfig.cooling_energy_per_kg, 0.001)
 
         with st.expander("Dotace a Daně"):
             sub_ha = st.number_input("SAPS (Kč/ha)", 0.0, 20000.0, 6000.0, 100.0)
@@ -575,7 +575,7 @@ cfg = FarmConfig(
     hay_barn_area_m2=hay_barn_m2,
     capital=cap,
     price_meat_avg=meat_price, 
-    market_quota_kg=m_quota * 15.0, # Přepočet ks -> kg (cca 15kg masa z jehněte)
+    market_quota_kg=m_quota_kg,
     price_meat_wholesale=m_wholesale,
     delay_bcs_perception=delay_bcs,
     delay_feed_delivery=delay_mat,
@@ -680,7 +680,7 @@ st.markdown(f"""
             <div style="font-size: 1.1rem; font-weight: bold; color: #f39c12;">{final_hay:.0f}</div>
         </div>
         <div style="text-align: center;">
-            <div style="font-size: 0.8rem; color: #fafafa; opacity: 0.8;">ROI</div>
+            <div style="font-size: 0.8rem; color: #fafafa; opacity: 0.8;">ROI (Cash)</div>
             <div style="font-size: 1.1rem; font-weight: bold; color: #fafafa;">{(total_profit/cap*100):.1f}%</div>
         </div>
         <div style="text-align: center;">
