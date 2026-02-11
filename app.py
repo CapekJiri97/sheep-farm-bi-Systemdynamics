@@ -235,7 +235,7 @@ if mode_switch == "Monte Carlo Laboratoř":
     active_scenarios = {k: v for k, v in active_scenarios_pool.items() if k[0] in selected_groups}
     
     # Tlačítko pro spuštění hromadné simulace.
-    if st.button(f"🚀 Spustit simulaci ({len(active_scenarios) * n_runs} běhů)"):
+    if st.button(f"Spustit simulaci ({len(active_scenarios) * n_runs} běhů)"):
         run_summaries = []
         quarterly_data = []
         progress_bar = st.progress(0)
@@ -264,8 +264,11 @@ if mode_switch == "Monte Carlo Laboratoř":
             "tax_land_ha": tax_land, "tax_building_m2": tax_build, "overhead_base_year": ov_base,
             "barn_maintenance_m2_year": maint_barn_m2, "admin_base_cost": adm_base, "admin_complexity_factor": adm_factor,
             "wage_hourly": wage, "labor_hours_per_ewe_year": labor_h, "labor_hours_per_ha_year": labor_ha,
-            "labor_hours_fix_year": labor_fix, "labor_hours_barn_m2_year": labor_barn_m2, "shock_prob_daily": shock_p
+            "labor_hours_fix_year": labor_fix, "labor_hours_barn_m2_year": labor_barn_m2, "shock_prob_daily": shock_p,
+            "enable_freezing": use_freezing, "freezer_capacity_kg": p_freezer_cap, "freezer_capex": p_freezer_capex,
+            "electricity_price": p_elec_price, "cooling_energy_per_kg": p_elec_usage
         }
+        config_fields = set(FarmConfig.__dataclass_fields__.keys())
 
         for sc_name, sc_params in active_scenarios.items():
             # Merge base config with scenario overrides
@@ -277,6 +280,14 @@ if mode_switch == "Monte Carlo Laboratoř":
                 run_kwargs["include_labor_cost"] = True
             elif labor_override == "Vše VYPNUTO":
                 run_kwargs["include_labor_cost"] = False
+            
+            # Normalize legacy scenario key (market_local_limit -> market_quota_kg)
+            if "market_local_limit" in run_kwargs:
+                run_kwargs["market_quota_kg"] = run_kwargs.get("market_quota_kg", run_kwargs["market_local_limit"])
+                run_kwargs.pop("market_local_limit", None)
+            
+            # Remove any unexpected keys before FarmConfig(**kwargs)
+            run_kwargs = {k: v for k, v in run_kwargs.items() if k in config_fields}
             
             for i in range(n_runs):
                 # Random seed for each run
@@ -325,7 +336,7 @@ if mode_switch == "Monte Carlo Laboratoř":
                 
                 summary_row = {
                     "Scénář": sc_name,
-                    "Skupina": sc_name.split(":")[0],
+                    "Skupina": sc_name[0],
                     "Seed": current_seed,
                     "Počet Ovcí (Start)": mc_cfg.initial_ewes,
                     "Plocha (ha)": mc_cfg.land_area,
@@ -1079,8 +1090,11 @@ if avg_ewes == 0: avg_ewes = 1
 years = cfg.sim_years
 
 # Economics per ewe
-# OPRAVA 1: Použití df.index.month místo get_level_values
-oct_income = df[df.index.month == 10]["Income"].sum()
+# POUŽITÍ PŘESNÝCH SLOUPCŮ Z MODELU (Inc_Meat, Inc_Subsidy, atd.)
+total_meat_income = df["Inc_Meat"].sum()
+total_hay_income = df["Inc_Hay"].sum()
+total_subsidy_income = df["Inc_Subsidy"].sum()
+total_expenses = df["Exp_Feed"].sum() + df["Exp_Variable"].sum() + df["Exp_Admin"].sum() + df["Exp_Overhead"].sum() + df["Exp_Labor"].sum() + df["Exp_Shock"].sum()
 
 model_feed = df["Exp_Feed"].sum() / (avg_ewes * years)
 
@@ -1090,18 +1104,19 @@ model_overhead_admin = (df["Exp_Overhead"].sum() + df["Exp_Admin"].sum() + df["E
 model_machinery_ops = (df["Exp_Mow"].sum() + df["Exp_Machinery"].sum() + df["Exp_Shock"].sum()) / (avg_ewes * years)
 
 # Meat Income
-model_meat = (oct_income / (avg_ewes * years)) if oct_income > 0 else (df["Income"].sum() / (avg_ewes * years))
-model_profit_no_sub = model_meat - (model_feed + model_vet_services + model_overhead_admin + model_machinery_ops)
+model_meat = total_meat_income / (avg_ewes * years)
 
-# OPRAVA 2: Sečtení jehňat pro validaci (sloupec "Lambs" neexistuje)
-lambs_total_series = df["Lambs Male"] + df["Lambs Female"]
-avg_lamb_peak = lambs_total_series[df.index.month == 6].mean()
+# Zisk bez dotací (Operational Profit)
+# (Tržby za maso + seno - Náklady) / (ovce * roky)
+model_profit_no_sub = (total_meat_income + total_hay_income - total_expenses) / (avg_ewes * years)
+
+# Odchov (použití existujícího sloupce Lambs)
+avg_lamb_peak = df[df.index.month == 6]["Lambs"].mean()
 model_rearing = avg_lamb_peak / avg_ewes if avg_ewes > 0 else 0
 
 # Subsidy dependence
 total_income = df["Income"].sum()
-subsidy_income = df[(df.index.month == 4) | (df.index.month == 11)]["Income"].sum()
-model_subsidy_dep = (subsidy_income / total_income * 100) if total_income > 0 else 0
+model_subsidy_dep = (total_subsidy_income / total_income * 100) if total_income > 0 else 0
 
 # 3. Create comparison dataframe
 validation_df = pd.DataFrame({

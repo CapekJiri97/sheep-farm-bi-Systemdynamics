@@ -269,6 +269,26 @@ class FarmModel:
         month = self.months[t]
         day = self.day_of_years[t]
         
+        # --- INITIALIZATION ---
+        inc_meat = 0.0
+        inc_hay = 0.0
+        inc_subsidy = 0.0
+        sold_animals = 0
+        sold_hay = 0.0
+        sold_fresh_kg = 0.0
+        sold_frozen_kg = 0.0
+        var_cost = 0.0
+        inc_frozen_sales = 0.0
+        
+        day_vet = 0.0
+        day_mow = 0.0
+        day_shearing = 0.0
+        day_ram_purchase = 0.0
+        day_machinery = 0.0
+        day_admin = 0.0
+        day_tax = 0.0
+        feed_cost = 0.0
+        
         # --- AGING (COHORT DELAY) ---
         # OPTIMALIZACE: Vektorové stárnutí
         self.ewe_ages += (1/365.0)
@@ -307,7 +327,6 @@ class FarmModel:
         if self.frozen_meat_kg > 0:
             daily_kwh = self.frozen_meat_kg * self.cfg.cooling_energy_per_kg
             cost_elec = daily_kwh * self.cfg.electricity_price
-            self.cash -= cost_elec
             var_cost += cost_elec 
         
         # Průběžný prodej z mrazáku
@@ -325,7 +344,6 @@ class FarmModel:
                 wholesale_kg = sold_kg - premium_kg
                 
                 revenue = (premium_kg * base_meat_price) + (wholesale_kg * self.cfg.price_meat_wholesale)
-                self.cash += revenue
                 self.frozen_meat_kg -= sold_kg
                 self.quota_remaining_kg = max(0, self.quota_remaining_kg - premium_kg)
                 inc_frozen_sales = revenue # Note: inc_frozen_sales variable needs to be added to income sum
@@ -357,17 +375,7 @@ class FarmModel:
         total_lambs = self.lambs_male + self.lambs_female
         demand_kg = (total_adults * self.cfg.feed_intake_ewe) + (total_lambs * self.cfg.feed_intake_lamb)
         
-        feed_cost = 0.0
         feed_source = ""
-        
-        # Daily cost trackers
-        day_vet = 0.0
-        day_mow = 0.0
-        day_shearing = 0.0
-        day_ram_purchase = 0.0
-        day_machinery = 0.0
-        day_admin = 0.0
-        day_tax = 0.0
         
         # Drought simulation
         is_drought = False
@@ -507,12 +515,6 @@ class FarmModel:
         day_admin = (self.cfg.admin_base_cost * admin_scale) / 365
 
         # --- EVENTS ---
-        inc_meat = 0.0
-        inc_hay = 0.0
-        inc_subsidy = 0.0
-        sold_animals = 0
-        sold_hay = 0.0
-        var_cost = 0.0
         
         # --- REPRODUCTION PIPELINE (Gestation Delay) ---
         
