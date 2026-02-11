@@ -39,7 +39,7 @@ class FarmConfig:
     
     # Market Loop (Tiered Pricing)
     market_quota_kg: float = 800.0      # Limit prodeje ze dvora (kg masa/rok)
-    price_meat_wholesale: float = 55.0  # Výkupní cena pro nadprodukci (Kč/kg)
+    price_meat_wholesale: float = 120.0 # Výkupní cena pro nadprodukci (Kč/kg masa - jatečně upravený trup)
     
     # Ecological Loop
     pasture_degradation_rate: float = 0.01 # Kolik % zdraví zmizí denně při přetížení
@@ -65,7 +65,7 @@ class FarmConfig:
     
     # 4. COSTS (Base rates)
     cost_feed_own_mean: float = 2.5
-    cost_feed_market_mean: float = 8.0
+    cost_feed_market_mean: float = 5.0
     
     cost_vet_base: float = 350.0
     cost_shearing: float = 50.0
@@ -89,7 +89,7 @@ class FarmConfig:
     fertility_std: float = 0.2
     mortality_lamb_mean: float = 0.10
     mortality_ewe_mean: float = 0.04
-    feed_intake_ewe: float = 2.2
+    feed_intake_ewe: float = 2.5
     feed_intake_lamb: float = 1.2
     hay_yield_ha_mean: float = 12.0
     hay_yield_ha_std: float = 3.0
@@ -97,9 +97,9 @@ class FarmConfig:
     bale_volume_m3: float = 1.4
     
     # 6. SUBSIDIES
-    subsidy_ha_mean: float = 8500.0
+    subsidy_ha_mean: float = 6000.0
     subsidy_ha_std: float = 200.0
-    subsidy_sheep_mean: float = 603.0
+    subsidy_sheep_mean: float = 1200.0
     subsidy_sheep_std: float = 50.0
     
     # 7. FIXED & SHOCKS
@@ -256,8 +256,10 @@ class FarmModel:
 
     def _perform_forecast(self):
         total_adults = self.ewes + self.rams_breeding
-        winter_feed_cost = 180 * self.cfg.feed_intake_ewe * self.cfg.cost_feed_market_mean * total_adults
-        return (winter_feed_cost + 40000) * (1.0 + self.cfg.safety_margin)
+        # Dynamický výpočet délky zimy podle aktuálního nastavení
+        winter_days = self.winter_end_day + (365 - self.winter_start_day)
+        winter_feed_cost = winter_days * self.cfg.feed_intake_ewe * self.cfg.cost_feed_market_mean * total_adults
+        return (winter_feed_cost + self.cfg.overhead_base_year) * (1.0 + self.cfg.safety_margin)
 
     def step(self, t):
         """
@@ -500,7 +502,7 @@ class FarmModel:
         if self.cfg.machinery_mode == "Own":
             # Depreciation (Odpisy)
             daily_depreciation = (self.cfg.own_machine_capex / self.cfg.own_machine_life) / 365
-            day_machinery += daily_depreciation
+            # day_machinery += daily_depreciation # Odpisy nejsou cashflow výdaj, zde počítáme jen opravy
             
             # Breakdown risk (increases with land area used)
             if np.random.random() < (self.cfg.machinery_failure_prob_daily * self.cfg.land_area):
@@ -657,8 +659,8 @@ class FarmModel:
             self.ewes = len(self.ewe_ages)
             
             self.lambs_female = 0
-            # Staré ovce jdou rovnou za sníženou cenu (maso na klobásy), nečerpají kvótu na jehněčí
-            inc_meat += cull_count * 60 * self.cfg.price_meat_wholesale 
+            # Staré ovce jdou za nízkou cenu (živá váha cca 60kg * 25 Kč/kg - výkup/klobásy)
+            inc_meat += cull_count * 60 * 25.0 
             sold_animals += cull_count
             
             # 3b. Check Ram Ratio (Growth support)
@@ -818,8 +820,8 @@ BASE_SCENARIO = {
     "sim_years": 5, "land_area": 30.0, "meadow_share": 0.25, "barn_capacity": 200, "initial_ewes": 150,
     "barn_area_m2": 400.0, "hay_barn_area_m2": 200.0,
     # Ekonomika
-    "capital": 250000.0, "price_meat_avg": 85.0, "meat_price_std": 10.0,
-    "market_local_limit": 40, "price_meat_wholesale": 55.0,
+    "capital": 250000.0, "price_meat_avg": 230.0, "meat_price_std": 15.0,
+    "market_quota_kg": 600.0, "price_meat_wholesale": 120.0,
     "initial_hay_bales": 50.0, "price_bale_sell_winter": 1200.0, "price_bale_sell_summer": 600.0,
     "price_ram_purchase": 10000.0,
     # Strategie
@@ -830,7 +832,7 @@ BASE_SCENARIO = {
     "pasture_degradation_rate": 0.01, "pasture_recovery_rate": 0.002,
     "delay_bcs_perception": 10, "delay_feed_delivery": 3, "max_ewe_age": 8.0,
     # Náklady
-    "cost_feed_own_mean": 2.5, "cost_feed_market_mean": 8.0,
+    "cost_feed_own_mean": 2.5, "cost_feed_market_mean": 5.0,
     "cost_vet_base": 350.0, "cost_shearing": 50.0,
     "admin_base_cost": 5000.0, "admin_complexity_factor": 1.5,
     # Stroje (Own)
@@ -841,9 +843,9 @@ BASE_SCENARIO = {
     "service_mow_ha": 3000.0, "service_bale_pcs": 200.0,
     # Biologie
     "fertility_mean": 1.5, "mortality_lamb_mean": 0.10, "mortality_ewe_mean": 0.04,
-    "feed_intake_ewe": 2.2, "hay_yield_ha_mean": 12.0, "bale_weight_kg": 250.0,
+    "feed_intake_ewe": 2.5, "hay_yield_ha_mean": 12.0, "bale_weight_kg": 250.0,
     # Dotace
-    "subsidy_ha_mean": 8500.0, "subsidy_sheep_mean": 603.0,
+    "subsidy_ha_mean": 6000.0, "subsidy_sheep_mean": 1200.0,
     "tax_land_ha": 500.0, "tax_building_m2": 15.0,
     # Práce
     "wage_hourly": 200.0, "labor_hours_per_ewe_year": 8.0,

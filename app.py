@@ -107,7 +107,7 @@ with st.sidebar:
             p_fertility = st.number_input("Plodnost (ks/bahnici)", 1.0, 3.0, 1.5, 0.1)
             p_mortality_lamb = st.number_input("Úhyn jehňat (%)", 0.0, 50.0, 10.0, 1.0) / 100.0
             p_mortality_ewe = st.number_input("Úhyn bahnic (%)", 0.0, 20.0, 4.0, 0.5) / 100.0
-            p_feed_ewe = st.number_input("Spotřeba bahnice (kg sušiny/den)", 1.0, 4.0, 2.2, 0.1)
+            p_feed_ewe = st.number_input("Spotřeba bahnice (kg sušiny/den)", 1.0, 4.0, 2.5, 0.1)
             p_hay_yield = st.number_input("Výnos sena (balíků/ha)", 5.0, 30.0, 12.0, 1.0)
             
         with st.expander("Provozní Náklady a Ceny"):
@@ -133,8 +133,8 @@ with st.sidebar:
             p_elec_usage = st.number_input("Spotřeba chlazení (kWh/kg/den)", 0.001, 0.5, 0.015, 0.001)
 
         with st.expander("Dotace a Daně"):
-            sub_ha = st.number_input("SAPS (Kč/ha)", 0.0, 20000.0, 8500.0, 100.0)
-            sub_sheep = st.number_input("VDJ (Kč/ks)", 0.0, 5000.0, 603.0, 10.0)
+            sub_ha = st.number_input("SAPS (Kč/ha)", 0.0, 20000.0, 6000.0, 100.0)
+            sub_sheep = st.number_input("VDJ (Kč/ks)", 0.0, 5000.0, 1200.0, 10.0)
             tax_land = st.number_input("Daň z nemovitosti (Kč/ha)", 0.0, 2000.0, 500.0, 50.0)
             tax_build = st.number_input("Daň ze staveb (Kč/m²)", 0.0, 100.0, 15.0, 1.0)
 
@@ -575,7 +575,7 @@ cfg = FarmConfig(
     hay_barn_area_m2=hay_barn_m2,
     capital=cap,
     price_meat_avg=meat_price, 
-    market_quota_kg=m_quota_kg,
+    market_quota_kg=m_quota * 15.0, # Přepočet ks -> kg (cca 15kg masa z jehněte)
     price_meat_wholesale=m_wholesale,
     delay_bcs_perception=delay_bcs,
     delay_feed_delivery=delay_mat,
