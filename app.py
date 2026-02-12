@@ -84,8 +84,6 @@ with st.sidebar:
         
         use_freezing = st.toggle("Aktivovat Mrazírny (Sektor 8)", value=True, help="Umožňuje mrazit maso a prodávat ho v průběhu roku za lepší ceny.")
         
-        use_forecast = st.toggle("Plánovač Cashflow", value=True)
-        
         # st.expander: Sbalitelná sekce pro pokročilá nastavení.
         with st.expander("Nastavení Počasí (Detail)", expanded=True):
             rain_mod = st.slider("Intenzita srážek (Růst trávy %)", 50, 150, key="rain_val", help="100% = Standardní růst.") / 100.0
@@ -165,7 +163,7 @@ with st.sidebar:
                         "initial_ewes": start_ewes, "barn_area_m2": barn_m2, "hay_barn_area_m2": hay_barn_m2, "capital": cap,
                         "price_meat_avg": meat_price, "market_quota_kg": m_quota_kg, "price_meat_wholesale": m_wholesale,
                         "delay_bcs_perception": delay_bcs, "delay_feed_delivery": delay_mat, "initial_hay_bales": start_hay,
-                        "enable_forecasting": use_forecast, "safety_margin": 0.2, "include_labor_cost": labor_on,
+                        "include_labor_cost": labor_on,
                         "climate_profile": climate, "machinery_mode": machinery, "rain_growth_global_mod": rain_mod,
                         "drought_prob_add": drought_add, "winter_len_global_mod": winter_mod,
                         "fertility_mean": p_fertility, "mortality_lamb_mean": p_mortality_lamb, "mortality_ewe_mean": p_mortality_ewe,
@@ -252,7 +250,7 @@ if mode_switch == "Monte Carlo Laboratoř":
             "initial_ewes": start_ewes, "barn_area_m2": barn_m2, "hay_barn_area_m2": hay_barn_m2, "capital": cap,
             "price_meat_avg": meat_price, "market_quota_kg": m_quota_kg, "price_meat_wholesale": m_wholesale,
             "delay_bcs_perception": delay_bcs, "delay_feed_delivery": delay_mat, "initial_hay_bales": start_hay,
-            "enable_forecasting": use_forecast, "safety_margin": 0.2, "include_labor_cost": labor_on,
+            "include_labor_cost": labor_on,
             "climate_profile": climate, "machinery_mode": machinery, "rain_growth_global_mod": rain_mod,
             "drought_prob_add": drought_add, "winter_len_global_mod": winter_mod,
             "fertility_mean": p_fertility, "mortality_lamb_mean": p_mortality_lamb, "mortality_ewe_mean": p_mortality_ewe,
@@ -580,8 +578,6 @@ cfg = FarmConfig(
     delay_bcs_perception=delay_bcs,
     delay_feed_delivery=delay_mat,
     initial_hay_bales=start_hay,
-    enable_forecasting=use_forecast, 
-    safety_margin=0.2,
     include_labor_cost=labor_on,
     climate_profile=climate,
     machinery_mode=machinery,

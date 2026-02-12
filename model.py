@@ -60,9 +60,6 @@ class FarmConfig:
     drought_prob_add: float = 0.0        # +0.0 = default
     winter_len_global_mod: float = 1.0   # 1.0 = default
     
-    safety_margin: float = 0.2
-    enable_forecasting: bool = True
-    
     # 4. COSTS (Base rates)
     cost_feed_own_mean: float = 2.5
     cost_feed_market_mean: float = 5.0
@@ -253,13 +250,6 @@ class FarmModel:
         total_m2 = self.cfg.barn_area_m2 + self.cfg.hay_barn_area_m2
         barn_maint = (total_m2 * self.cfg.barn_maintenance_m2_year) / 365
         return (base * (1.5 if month in [6,7,8] else 0.8)) + barn_maint
-
-    def _perform_forecast(self):
-        total_adults = self.ewes + self.rams_breeding
-        # Dynamický výpočet délky zimy podle aktuálního nastavení
-        winter_days = self.winter_end_day + (365 - self.winter_start_day)
-        winter_feed_cost = winter_days * self.cfg.feed_intake_ewe * self.cfg.cost_feed_market_mean * total_adults
-        return (winter_feed_cost + self.cfg.overhead_base_year) * (1.0 + self.cfg.safety_margin)
 
     def step(self, t):
         """
@@ -572,17 +562,6 @@ class FarmModel:
 
         # Sales (October)
         if month == 10 and self.date.day == 15:
-            # Planner logic
-            if self.cfg.enable_forecasting:
-                forecast = self._perform_forecast()
-                projected = self.cash - forecast
-                if projected < 0 and self.hay_stock_bales > 0:
-                    needed = int(abs(projected) / self.cfg.price_bale_sell_summer) + 1
-                    sold_hay_planner = min(self.hay_stock_bales * 0.4, needed)
-                    inc_hay += sold_hay_planner * self.cfg.price_bale_sell_summer
-                    sold_hay += sold_hay_planner
-                    self.hay_stock_bales -= sold_hay_planner
-            
             # TRŽNÍ SMYČKA: Tiered Pricing
             
             # 2. Renew Females (S respektem ke kapacitě ovčína)
@@ -827,7 +806,6 @@ BASE_SCENARIO = {
     # Strategie
     "machinery_mode": "Services", "climate_profile": "Normal", "include_labor_cost": True,
     "rain_growth_global_mod": 1.0, "drought_prob_add": 0.0, "winter_len_global_mod": 1.0,
-    "safety_margin": 0.2, "enable_forecasting": True,
     # Dynamika
     "pasture_degradation_rate": 0.01, "pasture_recovery_rate": 0.002,
     "delay_bcs_perception": 10, "delay_feed_delivery": 3, "max_ewe_age": 8.0,
@@ -935,7 +913,6 @@ SCENARIOS = {
         "own_machine_capex": 250000,       
         "own_machine_life": 5.0,           
         "machinery_repair_mean": 120000,   
-        "machinery_failure_prob_daily": 0.005, 
-        "safety_margin": 0.05              
+        "machinery_failure_prob_daily": 0.005
     }
 }
